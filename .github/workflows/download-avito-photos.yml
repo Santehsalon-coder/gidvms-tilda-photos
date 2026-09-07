@@ -1,7 +1,7 @@
 name: Download Avito photos
 on:
   push:
-    paths: ['input/full-ready.flag']
+    paths: ['input/catalog-ready.flag']
   workflow_dispatch:
 permissions:
   contents: write
@@ -36,7 +36,7 @@ jobs:
             since_commit=0
           }
 
-          for packed in input/full-*.b64; do
+          for packed in input/catalog-*.b64; do
             tmp_list="$(mktemp)"
             base64 -d "$packed" | gzip -dc > "$tmp_list"
             while IFS=$'\t' read -r sku pos url; do
@@ -48,7 +48,6 @@ jobs:
                 skipped=$((skipped+1))
                 continue
               fi
-
               tmp="photos/$sku/${pos}.tmp"
               sleep 1
               if curl --http1.1 -L --fail --silent --show-error --retry 6 --retry-all-errors --retry-delay 5 --connect-timeout 20 --max-time 180 -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/152 Safari/537.36' -e 'https://www.avito.ru/' "$url" -o "$tmp"; then
@@ -62,20 +61,14 @@ jobs:
                 esac
                 mv "$tmp" "photos/$sku/${pos}.${ext}"
                 echo -e "$sku\t$pos\tOK\t$mime\t$url" >> download-report.tsv
-                ok=$((ok+1))
-                since_commit=$((since_commit+1))
+                ok=$((ok+1)); since_commit=$((since_commit+1))
               else
                 echo -e "$sku\t$pos\tFAIL\tcurl\t$url" >> download-report.tsv
-                rm -f "$tmp"
-                failed=$((failed+1))
+                rm -f "$tmp"; failed=$((failed+1))
               fi
-
-              if [ "$since_commit" -ge 250 ]; then
-                save_progress
-              fi
+              if [ "$since_commit" -ge 250 ]; then save_progress; fi
             done < "$tmp_list"
             rm -f "$tmp_list"
           done
-
           save_progress
           echo "TOTAL=$total OK=$ok FAILED=$failed SKIPPED=$skipped"
