@@ -1,7 +1,7 @@
 name: Download Avito photos
 on:
   push:
-    paths: ['input/**']
+    paths: ['input/start.flag']
   workflow_dispatch:
 permissions:
   contents: write
