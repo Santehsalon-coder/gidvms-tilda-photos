@@ -1,0 +1,47 @@
+name: Download Avito photos
+on:
+  push:
+    paths: ['input/**']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download photos
+        shell: bash
+        run: |
+          set -u
+          mkdir -p photos
+          : > download-report.tsv
+          total=0; ok=0; failed=0
+          shopt -s nullglob
+          for list in input/*.tsv; do
+            while IFS=$'\t' read -r sku pos url; do
+              [ -z "${sku:-}" ] && continue
+              total=$((total+1)); mkdir -p "photos/$sku"
+              tmp="photos/$sku/${pos}.tmp"
+              if curl -L --fail --silent --show-error --retry 3 --retry-delay 2 --connect-timeout 20 --max-time 120 -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/152 Safari/537.36' -e 'https://www.avito.ru/' "$url" -o "$tmp"; then
+                mime=$(file --brief --mime-type "$tmp" || true)
+                case "$mime" in
+                  image/jpeg) ext=jpg;; image/png) ext=png;; image/webp) ext=webp;; image/gif) ext=gif;;
+                  *) echo -e "$sku\t$pos\tFAIL\t$mime\t$url" >> download-report.tsv; rm -f "$tmp"; failed=$((failed+1)); continue;;
+                esac
+                mv "$tmp" "photos/$sku/${pos}.${ext}"
+                echo -e "$sku\t$pos\tOK\t$mime\t$url" >> download-report.tsv; ok=$((ok+1))
+              else
+                echo -e "$sku\t$pos\tFAIL\tcurl\t$url" >> download-report.tsv; rm -f "$tmp"; failed=$((failed+1))
+              fi
+            done < "$list"
+          done
+          echo "TOTAL=$total OK=$ok FAILED=$failed"
+      - name: Commit photos
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add photos download-report.tsv
+          if git diff --cached --quiet; then echo 'No files'; else git commit -m 'Download Avito product photos'; git push; fi
