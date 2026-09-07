@@ -17,14 +17,19 @@ jobs:
           set -u
           mkdir -p photos
           : > download-report.tsv
-          total=0; ok=0; failed=0
+          total=0; ok=0; failed=0; skipped=0
           shopt -s nullglob
           for list in input/*.tsv; do
             while IFS=$'\t' read -r sku pos url; do
               [ -z "${sku:-}" ] && continue
               total=$((total+1)); mkdir -p "photos/$sku"
+              existing=(photos/$sku/${pos}.*)
+              if [ ${#existing[@]} -gt 0 ]; then
+                skipped=$((skipped+1)); continue
+              fi
               tmp="photos/$sku/${pos}.tmp"
-              if curl -L --fail --silent --show-error --retry 3 --retry-delay 2 --connect-timeout 20 --max-time 120 -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/152 Safari/537.36' -e 'https://www.avito.ru/' "$url" -o "$tmp"; then
+              sleep 1
+              if curl --http1.1 -L --fail --silent --show-error --retry 6 --retry-all-errors --retry-delay 5 --connect-timeout 20 --max-time 180 -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/152 Safari/537.36' -e 'https://www.avito.ru/' "$url" -o "$tmp"; then
                 mime=$(file --brief --mime-type "$tmp" || true)
                 case "$mime" in
                   image/jpeg) ext=jpg;; image/png) ext=png;; image/webp) ext=webp;; image/gif) ext=gif;;
@@ -37,7 +42,7 @@ jobs:
               fi
             done < "$list"
           done
-          echo "TOTAL=$total OK=$ok FAILED=$failed"
+          echo "TOTAL=$total OK=$ok FAILED=$failed SKIPPED=$skipped"
       - name: Commit photos
         shell: bash
         run: |
