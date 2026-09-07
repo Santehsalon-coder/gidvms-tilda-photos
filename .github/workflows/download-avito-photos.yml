@@ -36,7 +36,9 @@ jobs:
             since_commit=0
           }
 
-          for list in input/full-*.tsv; do
+          for packed in input/full-*.b64; do
+            tmp_list="$(mktemp)"
+            base64 -d "$packed" | gzip -dc > "$tmp_list"
             while IFS=$'\t' read -r sku pos url; do
               [ -z "${sku:-}" ] && continue
               total=$((total+1))
@@ -71,7 +73,8 @@ jobs:
               if [ "$since_commit" -ge 250 ]; then
                 save_progress
               fi
-            done < "$list"
+            done < "$tmp_list"
+            rm -f "$tmp_list"
           done
 
           save_progress
