@@ -1,52 +1,78 @@
 name: Download Avito photos
 on:
   push:
-    paths: ['input/start.flag']
+    paths: ['input/full-ready.flag']
   workflow_dispatch:
 permissions:
   contents: write
+concurrency:
+  group: avito-photo-migration
+  cancel-in-progress: false
 jobs:
   download:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@v4
-      - name: Download photos
+        with:
+          fetch-depth: 1
+      - name: Download all catalog photos
         shell: bash
         run: |
           set -u
           mkdir -p photos
           : > download-report.tsv
-          total=0; ok=0; failed=0; skipped=0
+          total=0; ok=0; failed=0; skipped=0; since_commit=0
           shopt -s nullglob
-          for list in input/*.tsv; do
+
+          save_progress () {
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add photos download-report.tsv
+            if ! git diff --cached --quiet; then
+              git commit -m "Download Avito product photos (progress)"
+              git push
+            fi
+            since_commit=0
+          }
+
+          for list in input/full-*.tsv; do
             while IFS=$'\t' read -r sku pos url; do
               [ -z "${sku:-}" ] && continue
-              total=$((total+1)); mkdir -p "photos/$sku"
+              total=$((total+1))
+              mkdir -p "photos/$sku"
               existing=(photos/$sku/${pos}.*)
               if [ ${#existing[@]} -gt 0 ]; then
-                skipped=$((skipped+1)); continue
+                skipped=$((skipped+1))
+                continue
               fi
+
               tmp="photos/$sku/${pos}.tmp"
               sleep 1
               if curl --http1.1 -L --fail --silent --show-error --retry 6 --retry-all-errors --retry-delay 5 --connect-timeout 20 --max-time 180 -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/152 Safari/537.36' -e 'https://www.avito.ru/' "$url" -o "$tmp"; then
                 mime=$(file --brief --mime-type "$tmp" || true)
                 case "$mime" in
-                  image/jpeg) ext=jpg;; image/png) ext=png;; image/webp) ext=webp;; image/gif) ext=gif;;
+                  image/jpeg) ext=jpg;;
+                  image/png) ext=png;;
+                  image/webp) ext=webp;;
+                  image/gif) ext=gif;;
                   *) echo -e "$sku\t$pos\tFAIL\t$mime\t$url" >> download-report.tsv; rm -f "$tmp"; failed=$((failed+1)); continue;;
                 esac
                 mv "$tmp" "photos/$sku/${pos}.${ext}"
-                echo -e "$sku\t$pos\tOK\t$mime\t$url" >> download-report.tsv; ok=$((ok+1))
+                echo -e "$sku\t$pos\tOK\t$mime\t$url" >> download-report.tsv
+                ok=$((ok+1))
+                since_commit=$((since_commit+1))
               else
-                echo -e "$sku\t$pos\tFAIL\tcurl\t$url" >> download-report.tsv; rm -f "$tmp"; failed=$((failed+1))
+                echo -e "$sku\t$pos\tFAIL\tcurl\t$url" >> download-report.tsv
+                rm -f "$tmp"
+                failed=$((failed+1))
+              fi
+
+              if [ "$since_commit" -ge 250 ]; then
+                save_progress
               fi
             done < "$list"
           done
+
+          save_progress
           echo "TOTAL=$total OK=$ok FAILED=$failed SKIPPED=$skipped"
-      - name: Commit photos
-        shell: bash
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add photos download-report.tsv
-          if git diff --cached --quiet; then echo 'No files'; else git commit -m 'Download Avito product photos'; git push; fi
