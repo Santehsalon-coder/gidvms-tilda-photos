@@ -1,0 +1,28 @@
+name: Check staged manifests
+on:
+  push:
+    paths: ['input/check-stage.flag']
+  workflow_dispatch:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect staged manifests
+        shell: bash
+        run: |
+          set -e
+          total=0
+          for f in input/stage-*.b64; do
+            tmp=$(mktemp)
+            base64 -d "$f" | gzip -dc > "$tmp"
+            n=$(wc -l < "$tmp")
+            first=$(head -n 1 "$tmp")
+            last=$(tail -n 1 "$tmp")
+            echo "FILE=$f LINES=$n"
+            echo "FIRST=$first"
+            echo "LAST=$last"
+            total=$((total+n))
+            rm -f "$tmp"
+          done
+          echo "STAGE_TOTAL=$total"
