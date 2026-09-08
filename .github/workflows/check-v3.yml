@@ -1,0 +1,24 @@
+name: Check catalog v3 manifests
+on:
+  push:
+    paths: ['input/check-v3.flag']
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Count v3 manifest lines
+        shell: bash
+        run: |
+          set -e
+          total=0
+          shopt -s nullglob
+          for f in input/catalog-v3-*.b64; do
+            tmp=$(mktemp)
+            base64 -d "$f" | gzip -dc > "$tmp"
+            n=$(wc -l < "$tmp")
+            echo "FILE=$f LINES=$n"
+            total=$((total+n))
+            rm -f "$tmp"
+          done
+          echo "V3_TOTAL=$total"
