@@ -1,0 +1,37 @@
+name: Inspect manifest candidates
+on:
+  push:
+    paths: ['input/inspect-manifests.flag']
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect all candidate manifests
+        shell: bash
+        run: |
+          set +e
+          shopt -s nullglob
+          for f in input/*.b64 input/*.txt input/*.tsv; do
+            case "$f" in
+              *.b64|*.txt)
+                tmp=$(mktemp)
+                if base64 -d "$f" 2>/dev/null | gzip -dc > "$tmp" 2>/dev/null; then
+                  n=$(wc -l < "$tmp")
+                  first=$(head -n 1 "$tmp")
+                  last=$(tail -n 1 "$tmp")
+                  echo "OK|$f|LINES=$n|FIRST=$first|LAST=$last"
+                else
+                  echo "BAD|$f"
+                fi
+                rm -f "$tmp"
+                ;;
+              *.tsv)
+                n=$(wc -l < "$f")
+                first=$(head -n 1 "$f")
+                last=$(tail -n 1 "$f")
+                echo "PLAIN|$f|LINES=$n|FIRST=$first|LAST=$last"
+                ;;
+            esac
+          done
+          exit 0
