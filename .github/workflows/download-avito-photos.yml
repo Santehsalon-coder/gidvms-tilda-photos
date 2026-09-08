@@ -25,7 +25,15 @@ jobs:
           total=0; ok=0; failed=0; skipped=0; since_commit=0
           shopt -s nullglob
           tmp_list="$(mktemp)"
-          cat input/catalog-part-*.txt | base64 -d | gzip -dc > "$tmp_list"
+          : > "$tmp_list"
+          parts=(input/catalog-v4-*.b64)
+          if [ ${#parts[@]} -ne 8 ]; then
+            echo "Expected 8 manifest parts, got ${#parts[@]}"
+            exit 1
+          fi
+          for packed in "${parts[@]}"; do
+            base64 -d "$packed" | gzip -dc >> "$tmp_list"
+          done
           lines=$(wc -l < "$tmp_list")
           echo "MANIFEST_LINES=$lines"
           if [ "$lines" -ne 4780 ]; then
@@ -39,6 +47,7 @@ jobs:
             git add photos download-report.tsv
             if ! git diff --cached --quiet; then
               git commit -m "Download Avito product photos (progress)"
+              git pull --rebase origin main
               git push
             fi
             since_commit=0
