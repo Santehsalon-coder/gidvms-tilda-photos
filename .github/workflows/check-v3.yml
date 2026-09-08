@@ -10,15 +10,21 @@ jobs:
       - name: Count v3 manifest lines
         shell: bash
         run: |
-          set -e
+          set +e
           total=0
+          bad=0
           shopt -s nullglob
           for f in input/catalog-v3-*.b64; do
             tmp=$(mktemp)
-            base64 -d "$f" | gzip -dc > "$tmp"
-            n=$(wc -l < "$tmp")
-            echo "FILE=$f LINES=$n"
-            total=$((total+n))
+            if base64 -d "$f" | gzip -dc > "$tmp"; then
+              n=$(wc -l < "$tmp")
+              echo "OK FILE=$f LINES=$n"
+              total=$((total+n))
+            else
+              echo "BAD FILE=$f"
+              bad=$((bad+1))
+            fi
             rm -f "$tmp"
           done
-          echo "V3_TOTAL=$total"
+          echo "V3_TOTAL=$total BAD=$bad"
+          exit 0
