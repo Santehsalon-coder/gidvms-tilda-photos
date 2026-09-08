@@ -8,21 +8,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect staged manifests
+      - name: Inspect all candidate manifests
         shell: bash
         run: |
-          set -e
-          total=0
-          for f in input/stage-*.b64; do
+          shopt -s nullglob
+          for f in input/catalog-v3-*.b64 input/catalog-v4-*.b64 input/catalog-v5-*.b64 input/stage-*.b64 input/full-*.b64; do
             tmp=$(mktemp)
-            base64 -d "$f" | gzip -dc > "$tmp"
-            n=$(wc -l < "$tmp")
-            first=$(head -n 1 "$tmp")
-            last=$(tail -n 1 "$tmp")
-            echo "FILE=$f LINES=$n"
-            echo "FIRST=$first"
-            echo "LAST=$last"
-            total=$((total+n))
+            if base64 -d "$f" 2>/dev/null | gzip -dc > "$tmp" 2>/dev/null; then
+              n=$(wc -l < "$tmp")
+              first=$(head -n 1 "$tmp" | cut -f1-2)
+              last=$(tail -n 1 "$tmp" | cut -f1-2)
+              echo "VALID FILE=$f LINES=$n FIRST=$first LAST=$last"
+            else
+              echo "INVALID FILE=$f"
+            fi
             rm -f "$tmp"
           done
-          echo "STAGE_TOTAL=$total"
