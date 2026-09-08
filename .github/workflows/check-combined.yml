@@ -1,0 +1,24 @@
+name: Check combined catalog manifests
+on:
+  push:
+    paths: ['input/check-combined.flag']
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate combined manifests
+        shell: bash
+        run: |
+          set -e
+          total=0
+          files=(input/catalog-v5-001.b64 input/catalog-v5-002.b64 input/catalog-v5-003.b64 input/catalog-v5-004.b64 input/catalog-v5-005.b64 input/catalog-v5-006.b64 input/catalog-v4-006.b64 input/catalog-v4-007.b64 input/catalog-v4-008.b64 input/catalog-v4-009.b64)
+          for f in "${files[@]}"; do
+            tmp=$(mktemp)
+            base64 -d "$f" | gzip -dc > "$tmp"
+            n=$(wc -l < "$tmp")
+            echo "OK $f LINES=$n"
+            total=$((total+n))
+            rm -f "$tmp"
+          done
+          echo "COMBINED_TOTAL=$total"
