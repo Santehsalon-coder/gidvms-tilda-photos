@@ -1,0 +1,37 @@
+name: Recover manifest from history
+on:
+  push:
+    paths: ['input/recover-history.flag']
+permissions:
+  contents: write
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Recover every valid manifest row from git history
+        shell: bash
+        run: |
+          set +e
+          tmpall=$(mktemp)
+          : > "$tmpall"
+          while read -r sha path; do
+            [ -z "$sha" ] && continue
+            tmp=$(mktemp)
+            git cat-file -p "$sha" > "$tmp" 2>/dev/null
+            awk -F '\t' 'NF==3 && $2 ~ /^[0-9][0-9]$/ && $3 ~ /^https:\/\/00\.img\.avito\.st\/image\// {print $0}' "$tmp" >> "$tmpall"
+            base64 --ignore-garbage -d "$tmp" 2>/dev/null | gzip -dc 2>/dev/null | awk -F '\t' 'NF==3 && $2 ~ /^[0-9][0-9]$/ && $3 ~ /^https:\/\/00\.img\.avito\.st\/image\// {print $0}' >> "$tmpall"
+            rm -f "$tmp"
+          done < <(git rev-list --objects --all)
+          sort -u "$tmpall" > input/recovered-history.tsv
+          n=$(wc -l < input/recovered-history.tsv)
+          echo "RECOVERED_HISTORY_UNIQUE=$n"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add input/recovered-history.tsv
+          if ! git diff --cached --quiet; then
+            git commit -m "Recover manifest rows from git history"
+            git push
+          fi
