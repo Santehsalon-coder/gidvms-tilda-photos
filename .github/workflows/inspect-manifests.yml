@@ -7,7 +7,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect all candidate manifests
+      - name: Inspect and salvage all candidate manifests
         shell: bash
         run: |
           set +e
@@ -16,14 +16,12 @@ jobs:
             case "$f" in
               *.b64|*.txt)
                 tmp=$(mktemp)
-                if base64 -d "$f" 2>/dev/null | gzip -dc > "$tmp" 2>/dev/null; then
-                  n=$(wc -l < "$tmp")
-                  first=$(head -n 1 "$tmp")
-                  last=$(tail -n 1 "$tmp")
-                  echo "OK|$f|LINES=$n|FIRST=$first|LAST=$last"
-                else
-                  echo "BAD|$f"
-                fi
+                base64 --ignore-garbage -d "$f" 2>/dev/null | gzip -dc > "$tmp" 2>/dev/null
+                rc=$?
+                n=$(wc -l < "$tmp")
+                first=$(head -n 1 "$tmp")
+                last=$(tail -n 1 "$tmp")
+                echo "SALVAGE|$f|RC=$rc|LINES=$n|FIRST=$first|LAST=$last"
                 rm -f "$tmp"
                 ;;
               *.tsv)
