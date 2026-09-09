@@ -1,0 +1,29 @@
+name: Fix one missing photo
+on:
+  push:
+    paths:
+      - 'input/fix-one-photo.flag'
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download missing photo
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p photos/8026633641
+          url='https://00.img.avito.st/image/1/1.kRxYSrawPfVu_b_4diDpZUnqP_xo4zX_7g.O1fkyGu2cWH2ayQ5rO4dHt8-oSGkl3o87ET-j81ftM4'
+          curl --http1.1 -L --fail --silent --show-error \
+            --retry 6 --retry-all-errors --retry-delay 5 \
+            --connect-timeout 20 --max-time 180 \
+            -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/152 Safari/537.36' \
+            -e 'https://www.avito.ru/' "$url" -o photos/8026633641/07.jpg
+          file photos/8026633641/07.jpg
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add photos/8026633641/07.jpg
+          git commit -m 'Add missing photo 8026633641-07' || true
+          git push
