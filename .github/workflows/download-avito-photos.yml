@@ -26,14 +26,12 @@ jobs:
           shopt -s nullglob
           tmp_list="$(mktemp)"
           : > "$tmp_list"
-          parts=(input/catalog-v5-*.b64)
-          if [ ${#parts[@]} -ne 24 ]; then
-            echo "Expected 24 manifest parts, got ${#parts[@]}"
+          parts=(input/manifest_*.tsv)
+          if [ ${#parts[@]} -ne 5 ]; then
+            echo "Expected 5 manifest parts, got ${#parts[@]}"
             exit 1
           fi
-          for packed in "${parts[@]}"; do
-            base64 -d "$packed" | gzip -dc >> "$tmp_list"
-          done
+          cat "${parts[@]}" > "$tmp_list"
           lines=$(wc -l < "$tmp_list")
           echo "MANIFEST_LINES=$lines"
           if [ "$lines" -ne 4780 ]; then
