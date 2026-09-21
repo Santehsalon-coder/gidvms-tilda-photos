@@ -1,0 +1,49 @@
+name: Prepare new sink photographs 20260921
+on:
+  push:
+    paths:
+      - input/new-sinks-20260921.json
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: new-sinks-20260921
+  cancel-in-progress: false
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          sparse-checkout: |
+            scripts
+            input
+            photos/import-20260921
+      - name: Install lossless image tools
+        run: |
+          python -m pip install Pillow
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libjpeg-turbo-progs
+      - name: Prepare and verify supplied photographs
+        run: python scripts/prepare-sinks-20260921.py
+      - name: Publish only this import's photographs
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add --sparse photos/import-20260921
+          if ! git diff --cached --quiet; then
+            git commit -m 'Publish pixel-verified lossless sink photographs 20260921'
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
+      - name: Return prepared photographs and verification reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sinks-20260921-prepared
+          retention-days: 7
+          path: |
+            photos/import-20260921
+            import-work-20260921
