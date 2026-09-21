@@ -3,16 +3,18 @@ on:
   push:
     paths:
       - input/new-sinks-20260921.json
+      - scripts/prepare-sinks-20260921.py
+      - .github/workflows/import-sinks-20260921.yml
   workflow_dispatch:
 permissions:
   contents: write
 concurrency:
   group: new-sinks-20260921
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
         with:
