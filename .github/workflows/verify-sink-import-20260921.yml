@@ -1,0 +1,89 @@
+name: Verify sink import 20260921
+on:
+  push:
+    paths: ['.github/workflows/verify-sink-import-20260921.yml']
+  workflow_run:
+    workflows: ['Prepare new sink photographs 20260921']
+    types: [completed]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          sparse-checkout: |
+            input
+            photos/import-20260921
+      - name: Check catalogue and public photo URLs
+        run: |
+          mkdir -p sink-import-verification
+          python - <<'PY'
+          import concurrent.futures, hashlib, json, subprocess, time, urllib.parse, urllib.request
+          from pathlib import Path
+          out = Path('sink-import-verification')
+          def get(url):
+              last = None
+              for retry in range(3):
+                  try:
+                      request = urllib.request.Request(url, headers={'User-Agent':'Mozilla/5.0'})
+                      with urllib.request.urlopen(request, timeout=25) as response:
+                          return response.read(), response.status, response.headers.get('Content-Type','')
+                  except Exception as exc:
+                      last = exc
+                      time.sleep(1+retry)
+              raise RuntimeError(str(last))
+          try:
+              products, metadata, seen = [], [], set()
+              page=1
+              while page not in seen:
+                  seen.add(page)
+                  query=urllib.parse.urlencode({'storepartuid':'724727657493','recid':'3742006901','size':'100','slice':str(page)})
+                  data, status, content_type = get('https://store.tildaapi.com/api/getproductslist/?'+query)
+                  obj=json.loads(data)
+                  assert isinstance(obj.get('products'),list)
+                  products.extend(obj['products'])
+                  metadata.append({k:v for k,v in obj.items() if k!='products'})
+                  if obj.get('nextslice'):
+                      page=int(obj['nextslice'])
+                  elif len(products)<int(obj.get('total',len(products))) and obj['products']:
+                      page+=1
+                  else:
+                      break
+                  assert len(seen)<80
+              (out/'catalogue.json').write_text(json.dumps({'products':products,'pages':metadata},ensure_ascii=False,indent=2))
+              print('CATALOGUE',len(products),flush=True)
+          except Exception as exc:
+              (out/'catalogue-error.txt').write_text(str(exc))
+              print('CATALOGUE_FAILED',str(exc),flush=True)
+          source=Path('photos/import-20260921/report.json')
+          if source.exists():
+              report=json.loads(source.read_text())
+              commit=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+              def verify(item):
+                  url='https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/'+commit+'/'+item['path']
+                  content,status,mime=get(url)
+                  expected=Path(item['path']).read_bytes()
+                  valid=status==200 and content==expected and mime.startswith('image/')
+                  return {'id':item['id'],'position':item['position'],'url':url,'status':status,'content_type':mime,'bytes':len(content),'sha256':hashlib.sha256(content).hexdigest(),'valid':valid}
+              with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+                  checks=list(pool.map(verify,report['photos']))
+              result={'commit':commit,'photo_count':len(checks),'all_valid':all(x['valid'] for x in checks),'photos':checks}
+              (out/'public-url-verification.json').write_text(json.dumps(result,ensure_ascii=False,indent=2))
+              assert len(checks)==138 and result['all_valid']
+              print('PUBLIC_PHOTOS_VALID',len(checks),flush=True)
+          else:
+              (out/'photos-not-yet-published.txt').write_text('The preparation run has not published its photo report yet.')
+              print('PHOTOS_NOT_PUBLISHED_YET',flush=True)
+          PY
+      - name: Return verification data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sink-import-verification
+          retention-days: 7
+          path: sink-import-verification
