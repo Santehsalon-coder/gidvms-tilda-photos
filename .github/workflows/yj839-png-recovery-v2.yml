@@ -1,0 +1,88 @@
+name: Yj839 lossless PNG recovery v2
+on:
+  push:
+    paths: ['.github/workflows/yj839-png-recovery-v2.yml']
+permissions:
+  contents: write
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          sparse-checkout: photos/recovery-yj839-v2
+      - run: python -m pip install -q Pillow
+      - name: Inspect both originals and prepare a standard PNG without pixel changes
+        run: |
+          mkdir -p recovery photos/recovery-yj839-v2
+          python - <<'PY'
+          import hashlib, io, json, time, urllib.request, urllib.parse
+          from pathlib import Path
+          from PIL import Image
+          out=Path('recovery')
+          def get(url):
+              request=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0'})
+              with urllib.request.urlopen(request,timeout=35) as response:
+                  return response.read(),dict(response.headers),response.status
+          supplier='https://gid.com.ru/d/yj839_7-2.png'
+          failed='https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/06e40d4f1fe998372d215eed8c7c8065a3c297bd/photos/gid-20260922/07d1f118f5f945ca08046f46.webp'
+          report={'checked_utc':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'site_modified':False,'supplier_url':supplier,'previous_url':failed}
+          data,headers,status=get(supplier)
+          (out/'supplier-original.png').write_bytes(data)
+          source=Image.open(io.BytesIO(data)); source.load()
+          assert source.format=='PNG' and source.size==(1200,1600)
+          report['source']={'status':status,'headers':headers,'bytes':len(data),'size':source.size,'mode':source.mode,'info_keys':list(source.info.keys())}
+          try:
+              old,oldheaders,oldstatus=get(failed)
+              oldimg=Image.open(io.BytesIO(old)); oldimg.load()
+              report['old_file']={'status':oldstatus,'headers':oldheaders,'bytes':len(old),'size':oldimg.size,'mode':oldimg.mode,'format':oldimg.format,'sha256':hashlib.sha256(old).hexdigest(),'pixels_match_source':oldimg.convert('RGBA').tobytes()==source.convert('RGBA').tobytes(),'info_keys':list(oldimg.info.keys())}
+          except Exception as error:report['old_file_error']=str(error)
+          image=source.copy()
+          if image.mode=='RGBA' and image.getchannel('A').getextrema()==(255,255):image=image.convert('RGB')
+          dest=Path('photos/recovery-yj839-v2/yj839-interior-lossless.png')
+          metadata={key:source.info[key] for key in ('icc_profile','exif') if source.info.get(key)}
+          image.save(dest,format='PNG',optimize=True,compress_level=9,**metadata)
+          decoded=Image.open(dest); decoded.load()
+          assert decoded.size==source.size and decoded.convert('RGBA').tobytes()==source.convert('RGBA').tobytes()
+          report['replacement']={'path':str(dest),'format':decoded.format,'mode':decoded.mode,'size':decoded.size,'bytes':dest.stat().st_size,'pixels_equal':True,'sha256':hashlib.sha256(dest.read_bytes()).hexdigest()}
+          (out/'yj839-interior-lossless.png').write_bytes(dest.read_bytes())
+          query=urllib.parse.urlencode({'storepartuid':'724727657493','recid':'3742006901','productuid':'467063606453','_gvs':str(time.time_ns())})
+          try:
+              product,_,_=get('https://store.tildaapi.com/api/getproduct/?'+query)
+              parsed=json.loads(product)
+              (out/'current-product.json').write_text(json.dumps(parsed,ensure_ascii=False,indent=2))
+          except Exception as error:report['current_product_error']=str(error)
+          (out/'report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2))
+          print(json.dumps({k:v for k,v in report.items() if k not in ['source','old_file']},ensure_ascii=False))
+          PY
+      - name: Publish this new image only
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add --sparse photos/recovery-yj839-v2/yj839-interior-lossless.png
+          git commit -m 'Add pixel-identical PNG fallback for the rejected Yj839 WebP'
+          git pull --rebase origin main
+          git push origin HEAD:main
+      - name: Verify the final public URL
+        run: |
+          python - <<'PY'
+          import json,hashlib,subprocess,urllib.request
+          from pathlib import Path
+          out=Path('recovery');report=json.loads((out/'report.json').read_text())
+          commit=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          url='https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/'+commit+'/'+report['replacement']['path']
+          with urllib.request.urlopen(url,timeout=35) as r:
+              data=r.read();status=r.status;mime=r.headers.get('Content-Type')
+          assert status==200 and mime=='image/png' and hashlib.sha256(data).hexdigest()==report['replacement']['sha256']
+          report['public_url']=url;report['public_status']=status;report['public_type']=mime
+          (out/'report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2))
+          print('PNG_PUBLIC_VERIFIED',url,len(data))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: yj839-png-recovery-v2
+          retention-days: 7
+          path: recovery
