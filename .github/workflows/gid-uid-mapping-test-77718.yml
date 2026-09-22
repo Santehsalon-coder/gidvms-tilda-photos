@@ -1,0 +1,85 @@
+name: GID UID mapping test 77718
+on:
+  push:
+    paths: ['.github/workflows/gid-uid-mapping-test-77718.yml']
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Update only stock of one intended GID card using Tilda UID as CommerceML ID
+        env:
+          TILDA_COMMERCEML_PASSWORD: ${{ secrets.TILDA_COMMERCEML_PASSWORD }}
+        run: |
+          mkdir -p reports
+          python - <<'PY'
+          import base64,http.cookiejar,json,os,re,time,urllib.parse,urllib.request
+          from decimal import Decimal
+          from pathlib import Path
+          USER='25163343'; PASSWORD=os.environ.pop('TILDA_COMMERCEML_PASSWORD','')
+          CONNECTOR='https://store.tilda.ru/connectors/commerceml/'
+          CAT='https://store.tildaapi.com/api/getproductslist/'
+          UID='309694664693'; SKU='77718'; EXT='GID-77718'; PRICE='3550'; TARGET_QTY=1
+          PRICE_TYPE='cbcf493b-55bc-11d9-848a-00112f43529a'
+          def read():
+              token=str(time.time_ns()); products=[]; page=1; total=None
+              while True:
+                  q=urllib.parse.urlencode({'storepartuid':'724727657493','recid':'3742006901','size':'100','slice':str(page),'sort[created]':'desc','_gvs':token})
+                  req=urllib.request.Request(CAT+'?'+q,headers={'User-Agent':'GidVMS-uid-test/1.0','Cache-Control':'no-cache'})
+                  with urllib.request.urlopen(req,timeout=35) as r:d=json.load(r)
+                  if total is None: total=int(d['total'])
+                  products.extend(d['products'])
+                  if len(products)>=total: break
+                  page+=1
+              m=[p for p in products if str(p.get('uid'))==UID and str(p.get('sku'))==SKU and str(p.get('externalid'))==EXT]
+              if len(m)!=1: raise RuntimeError('mapping not unique')
+              return m[0],total
+          before,total_before=read()
+          if int(str(before.get('quantity'))) not in (0,1): raise RuntimeError('unexpected starting quantity')
+          protected_keys=['title','descr','text','externalid','sku','brand','characteristics','gallery','url']
+          protected={k:before.get(k) for k in protected_keys}
+          if not PASSWORD: raise RuntimeError('secret missing')
+          auth='Basic '+base64.b64encode((USER+':'+PASSWORD).encode()).decode(); del PASSWORD
+          opener=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+          def req(mode,filename=None,body=None):
+              params={'type':'catalog','mode':mode}
+              if filename:params['filename']=filename
+              headers={'User-Agent':'GidVMS-uid-test/1.0','Authorization':auth}
+              method='GET'; data=None
+              if body is not None: method='POST'; data=body; headers['Content-Type']='application/octet-stream'
+              request=urllib.request.Request(CONNECTOR+'?'+urllib.parse.urlencode(params),headers=headers,data=data,method=method)
+              with opener.open(request,timeout=60) as r:return r.read(131072).decode('utf-8-sig',errors='replace').strip()
+          check=req('checkauth'); lines=check.splitlines()
+          if not lines or lines[0].strip().lower()!='success': raise RuntimeError('checkauth failed')
+          if len(lines)>=3 and re.fullmatch(r'[A-Za-z0-9_]+',lines[1].strip()): opener.addheaders=[('Cookie',lines[1].strip()+'='+lines[2].strip())]
+          init=req('init')
+          if 'success' not in init.lower() and 'zip=' not in init.lower() and 'file_limit=' not in init.lower(): raise RuntimeError('init failed')
+          now=time.strftime('%Y-%m-%dT%H:%M:%S')
+          import_xml=f'''<?xml version="1.0" encoding="UTF-8"?><КоммерческаяИнформация ВерсияСхемы="2.05" ДатаФормирования="{now}"><Каталог СодержитТолькоИзменения="true"><Ид>UID-TEST</Ид><Наименование>UID TEST</Наименование><Товары><Товар><Ид>{UID}</Ид><Артикул>{SKU}</Артикул><Наименование>{before["title"]}</Наименование></Товар></Товары></Каталог></КоммерческаяИнформация>'''.encode()
+          offers_xml=f'''<?xml version="1.0" encoding="UTF-8"?><КоммерческаяИнформация ВерсияСхемы="2.05" ДатаФормирования="{now}"><ПакетПредложений СодержитТолькоИзменения="true"><Ид>UID-TEST-OFFERS</Ид><Наименование>UID TEST</Наименование><ИдКаталога>UID-TEST</ИдКаталога><ТипыЦен><ТипЦены><Ид>{PRICE_TYPE}</Ид><Наименование>Розничная цена</Наименование><Валюта>RUB</Валюта></ТипЦены></ТипыЦен><Предложения><Предложение><Ид>{UID}</Ид><Артикул>{SKU}</Артикул><Наименование>{before["title"]}</Наименование><Цены><Цена><Представление>{PRICE} RUB</Представление><ИдТипаЦены>{PRICE_TYPE}</ИдТипаЦены><ЦенаЗаЕдиницу>{PRICE}</ЦенаЗаЕдиницу><Валюта>RUB</Валюта><Единица>шт</Единица><Коэффициент>1</Коэффициент></Цена></Цены><Количество>{TARGET_QTY}</Количество></Предложение></Предложения></ПакетПредложений></КоммерческаяИнформация>'''.encode()
+          req('file','uid-test-import.xml',import_xml); req('file','uid-test-offers.xml',offers_xml)
+          s1=req('import','uid-test-import.xml')
+          if 'success' not in s1.lower(): raise RuntimeError('product import failed')
+          s2=req('import','uid-test-offers.xml'); polls=0
+          while s2.strip().lower()=='progress' and polls<20:
+              time.sleep(2);s2=req('import','uid-test-offers.xml');polls+=1
+          if 'success' not in s2.lower(): raise RuntimeError('offer import failed')
+          updated=False;after=None;total_after=None
+          for _ in range(12):
+              time.sleep(2);after,total_after=read()
+              if int(str(after.get('quantity')))==TARGET_QTY:
+                  updated=True;break
+          result={'success':updated,'before_quantity':int(str(before.get('quantity'))),'after_quantity':int(str(after.get('quantity'))),'target_quantity':TARGET_QTY,'price_unchanged':Decimal(str(after.get('price')))==Decimal(str(before.get('price'))),'protected_fields_unchanged':protected=={k:after.get(k) for k in protected_keys},'catalogue_total_unchanged':total_before==total_after}
+          Path('reports/result.json').write_text(json.dumps(result,ensure_ascii=False,indent=2))
+          print(json.dumps(result,ensure_ascii=False))
+          if not all([result['success'],result['price_unchanged'],result['protected_fields_unchanged'],result['catalogue_total_unchanged']]): raise RuntimeError('UID mapping test failed')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: gid-uid-mapping-test-77718
+          retention-days: 7
+          path: reports
+          if-no-files-found: ignore
