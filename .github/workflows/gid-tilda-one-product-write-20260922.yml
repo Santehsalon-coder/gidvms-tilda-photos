@@ -15,7 +15,8 @@ jobs:
         run: |
           mkdir -p reports
           python - <<'PY'
-          import base64, http.cookiejar, json, os, re, time, urllib.parse, urllib.request\n          from decimal import Decimal
+          import base64, http.cookiejar, json, os, re, time, urllib.parse, urllib.request
+          from decimal import Decimal
           import xml.etree.ElementTree as ET
           from pathlib import Path
 
