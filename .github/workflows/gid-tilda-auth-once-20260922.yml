@@ -1,0 +1,37 @@
+name: GID - Tilda auth check once
+on:
+  push:
+    paths: ['.github/workflows/gid-tilda-auth-once-20260922.yml']
+permissions:
+  contents: read
+jobs:
+  auth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Load pinned reviewed preflight script
+        run: |
+          python - <<'PY'
+          import hashlib, urllib.request
+          from pathlib import Path
+          url='https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/ca24ec325cfac7459a11db7bdc33bd856a15b8da/sync/gid_preflight_v1.py'
+          with urllib.request.urlopen(url,timeout=35) as response:
+              code=response.read(100001)
+          if hashlib.sha256(code).hexdigest()!='7f102d5d194a84a9072e5d20e642e435d38559c1615f7f699f8b574ae711bedb':
+              raise SystemExit('Script checksum mismatch')
+          Path('gid_preflight.py').write_bytes(code)
+          Path('reports').mkdir(exist_ok=True)
+          PY
+      - name: Authentication-only check
+        env:
+          TILDA_COMMERCEML_PASSWORD: ${{ secrets.TILDA_COMMERCEML_PASSWORD }}
+          TILDA_AUTH_CHECK_APPROVED: 'YES'
+        run: python gid_preflight.py check-auth
+      - name: Save non-sensitive report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gid-tilda-auth-once
+          retention-days: 3
+          path: reports
+          if-no-files-found: ignore
