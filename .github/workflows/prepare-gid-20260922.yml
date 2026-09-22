@@ -1,0 +1,61 @@
+name: Prepare GID catalogue images 20260922
+on:
+  push:
+    paths: ['.github/workflows/prepare-gid-20260922.yml']
+permissions:
+  contents: write
+concurrency:
+  group: gid-images-20260922
+  cancel-in-progress: false
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          sparse-checkout: |
+            scripts
+            input
+            photos/gid-20260922
+      - name: Install image and source parsing tools
+        run: |
+          python -m pip install -q Pillow beautifulsoup4
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libjpeg-turbo-progs
+      - name: Read original product galleries and specifications
+        run: python scripts/prepare-gid-20260922.py sources
+      - name: Return source matching data early
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gid-metadata-20260922
+          retention-days: 7
+          path: gid-work/metadata.json
+      - name: Optimize original photographs losslessly
+        run: python scripts/prepare-gid-20260922.py images
+      - name: Publish only the new public photographs
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm --ignore-unmatch input/gid-20260922-photos.b64 input/gid-photos-20260922/part1.b64 input/gid-photos-20260922/part2.b64 input/gid-photos-20260922/part3.b64
+          git add --sparse photos/gid-20260922
+          if ! git diff --cached --quiet; then
+            git commit -m 'Publish verified lossless GID product photographs; remove unused draft manifests'
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
+      - name: Verify direct public URLs
+        run: python scripts/prepare-gid-20260922.py verify
+      - name: Return final mapping and image previews
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gid-photo-reports-20260922
+          retention-days: 7
+          path: |
+            gid-work/metadata.json
+            gid-work/photo-report.json
+            gid-work/public-verification.json
+            gid-work/previews
