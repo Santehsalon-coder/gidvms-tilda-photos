@@ -1,0 +1,57 @@
+name: GID post-sync audit
+on:
+  push:
+    paths: ['.github/workflows/gid-post-sync-audit-20260922.yml']
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read current Tilda values versus current GID XML
+        run: |
+          mkdir -p reports
+          python - <<'PY'
+          import json,time,urllib.parse,urllib.request,xml.etree.ElementTree as ET
+          from decimal import Decimal
+          from pathlib import Path
+          FEED='https://gid.com.ru/e/share/yandex_turbo'; CAT='https://store.tildaapi.com/api/getproductslist/'
+          def get(url):
+              req=urllib.request.Request(url,headers={'User-Agent':'GidVMS-post-audit/1.0','Cache-Control':'no-cache','Pragma':'no-cache'})
+              with urllib.request.urlopen(req,timeout=45) as r:return r.read()
+          raw=get(FEED).replace(b'<!DOCTYPE yml_catalog SYSTEM "shops.dtd">',b'',1)
+          root=ET.fromstring(raw)
+          bysku={(o.findtext('vendorCode') or '').strip():o for o in root.findall('./shop/offers/offer') if (o.findtext('vendorCode') or '').strip()}
+          token=str(time.time_ns()); products=[]; page=1; total=None
+          while True:
+              q=urllib.parse.urlencode({'storepartuid':'724727657493','recid':'3742006901','size':'100','slice':str(page),'sort[created]':'desc','_gvs':token})
+              data=json.loads(get(CAT+'?'+q))
+              if total is None: total=int(data['total'])
+              if int(data['total'])!=total: raise RuntimeError('catalogue changed')
+              products.extend(data['products'])
+              if len(products)>=total: break
+              page+=1
+          targets=[p for p in products if str(p.get('brand') or '').strip().upper()=='GID' and str(p.get('externalid') or '').strip()==f"GID-{str(p.get('sku') or '').strip()}"]
+          if len(targets)!=471: raise RuntimeError(f'targets={len(targets)}')
+          mismatches=[]; price_mismatch=[]; qty_mismatch=[]
+          for p in targets:
+              sku=str(p['sku']); o=bysku.get(sku)
+              if o is None: raise RuntimeError('missing supplier SKU '+sku)
+              tp=Decimal(str(p.get('price'))); sp=Decimal((o.findtext('price') or '').strip())
+              tq=int(str(p.get('quantity'))); sq=int((o.findtext('count') or '').strip())
+              if tp!=sp or tq!=sq:
+                  row={'sku':sku,'title':p.get('title'),'tilda_price':str(tp),'supplier_price':str(sp),'tilda_quantity':tq,'supplier_quantity':sq}
+                  mismatches.append(row)
+                  if tp!=sp: price_mismatch.append(row)
+                  if tq!=sq: qty_mismatch.append(row)
+          summary={'store_modified':False,'targets':471,'catalogue_total':total,'feed_date':root.get('date'),'remaining_mismatches':len(mismatches),'remaining_price_mismatches':len(price_mismatch),'remaining_quantity_mismatches':len(qty_mismatch),'matching_all_fields':471-len(mismatches)}
+          Path('reports/summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2))
+          Path('reports/mismatches.json').write_text(json.dumps(mismatches,ensure_ascii=False,indent=2))
+          print(json.dumps(summary,ensure_ascii=False))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gid-post-sync-audit
+          retention-days: 7
+          path: reports
