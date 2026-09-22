@@ -1,0 +1,67 @@
+name: Audit Yj839 gallery and new GID search
+on:
+  push:
+    paths: ['.github/workflows/audit-yj839-gallery-1420.yml']
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - run: |
+          python -m pip install -q Pillow playwright
+          python -m playwright install --with-deps chromium >/dev/null
+      - name: Compare the seven original and six stored images
+        run: |
+          mkdir -p verify
+          python - <<'PY'
+          import io,json,urllib.request,concurrent.futures
+          from pathlib import Path
+          from PIL import Image,ImageDraw,ImageChops,ImageStat,ImageOps
+          out=Path('verify');base='https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/06e40d4f1fe998372d215eed8c7c8065a3c297bd/photos/gid-20260922/'
+          sources=[base+p+'.webp' for p in ['07d1f118f5f945ca08046f46','f43c8dcb63b47ccbcb5e85c9','473ee899ed32d218f1e8f5c4','b5d6da6136d506c22b31c887','8d13aaa72d66e1f5f9488820','2960cb7ec137ad8a774f7b72','d723df06fe26e201b98699da']]
+          stored=['https://static.tildacdn.com/stor6433-3266-4437-b036-306164656130/ad7be2d3cde880f095032b16c34466a5.webp','https://static.tildacdn.com/stor3432-3665-4039-a334-396233643533/81ee332eb58936e7d9f5adf55786e07a.webp','https://static.tildacdn.com/stor3563-3734-4937-b336-363534613661/4b2b40adb30dd6f95456c311b74fe264.webp','https://static.tildacdn.com/stor6435-3834-4532-b961-633933343132/95fc737244fc04fd3799d86c7c883056.webp','https://static.tildacdn.com/stor6263-3731-4430-b262-343263633361/656a5826a5be6f2c3753febc3c3bd8f7.webp','https://static.tildacdn.com/stor6237-6264-4936-b166-306262313336/4e95f4ae68398bd0897fb1bc5614dd0a.webp']
+          def image(url):
+              req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0'})
+              with urllib.request.urlopen(req,timeout=30) as r:data=r.read()
+              return ImageOps.exif_transpose(Image.open(io.BytesIO(data))).convert('RGB'),len(data)
+          with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:images=list(pool.map(image,sources+stored))
+          thumbnails=[im.resize((96,128)) for im,size in images]
+          matrix=[[sum(ImageStat.Stat(ImageChops.difference(thumbnails[i],thumbnails[7+j])).mean)/3 for j in range(6)] for i in range(7)]
+          originals=[[sum(ImageStat.Stat(ImageChops.difference(thumbnails[i],thumbnails[j])).mean)/3 for j in range(7)] for i in range(7)]
+          report={'sources':sources,'stored':stored,'mean_absolute_rgb_distance':matrix,'original_pair_distances':originals,'sizes':[{'width':i.width,'height':i.height,'bytes':n} for i,n in images]}
+          (out/'photo-comparison.json').write_text(json.dumps(report,indent=2))
+          canvas=Image.new('RGB',(1540,610),'white');d=ImageDraw.Draw(canvas)
+          for n,(im,length) in enumerate(images):
+              row=0 if n<7 else 1;col=n if n<7 else n-7;x=col*220;y=row*305
+              im.thumbnail((210,270));canvas.paste(im,(x+(220-im.width)//2,y+(275-im.height)//2))
+              d.text((x+8,y+280),('SOURCE ' if row==0 else 'TILDA ')+str(col+1),fill='black')
+          canvas.save(out/'photo-comparison.jpg',quality=90)
+          PY
+      - name: Inspect real published search without waiting on undocumented loader internals
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from playwright.sync_api import sync_playwright
+          out=Path('verify');results=[];errors=[]
+          with sync_playwright() as pw:
+              b=pw.chromium.launch(headless=True);p=b.new_page(viewport={'width':1440,'height':1000})
+              p.on('pageerror',lambda e:errors.append(str(e)))
+              try:
+                  p.goto('https://entertain-becalmed-buzzard.tilda.ws/gid-v-mire?gc=all&q=L070-BM-GD',wait_until='domcontentloaded',timeout=45000)
+                  p.wait_for_timeout(18000)
+                  for label,w,h in [('desktop',1440,1000),('tablet',768,1024),('mobile',390,844)]:
+                      p.set_viewport_size({'width':w,'height':h});p.wait_for_timeout(900)
+                      s=p.evaluate('''()=>{const f=window.GVS_PRODUCTS13,s=f?.getSnapshot?.();return{url:location.href,version:f?.providerVersion,complete:s?.complete,error:s?.error,refreshError:s?.refreshError,total:s?.total,loaded:s?.items?.length,gid:s?.items?.filter(p=>String(p.externalid||'').startsWith('GID-')).length,body:(document.querySelector('#gvs-category-page')||document.body).innerText,cards:[...document.querySelectorAll('#gvs-category-page .gc10-card')].map(e=>({uid:e.dataset.productUid,text:e.innerText,images:[...e.querySelectorAll('img')].map(i=>({src:i.currentSrc,loaded:!!i.naturalWidth}))})),width:innerWidth,scrollWidth:document.documentElement.scrollWidth}}''')
+                      s['view']=label;results.append(s);p.screenshot(path=str(out/('new-search-'+label+'.png')))
+              except Exception as exc:errors.append(str(exc))
+              (out/'search-result.json').write_text(json.dumps({'site_modified':False,'views':results,'errors':errors},ensure_ascii=False,indent=2));b.close()
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: yj839-gallery-and-new-search
+          retention-days: 3
+          path: verify
