@@ -1,0 +1,59 @@
+name: GID supplementary original images
+on:
+  push:
+    paths: ['.github/workflows/gid-extra-images-20260922.yml']
+permissions:
+  contents: write
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          sparse-checkout: scripts
+      - run: |
+          python -m pip install -q Pillow beautifulsoup4
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libjpeg-turbo-progs
+      - name: Obtain the exact five photo links in the supplied CSV
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          script=Path('scripts/prepare-gid-20260922.py').read_text().rsplit("\n{'sources':",1)[0]
+          g={};exec(script,g)
+          g['OUT']=Path('gid-extra-work');g['OUT'].mkdir()
+          g['ROOT']=Path('photos/gid-20260922-extra');g['ROOT'].mkdir(parents=True)
+          urls=['https://gid.com.ru/d/tr2192y.jpg','https://gid.com.ru/d/unitaz_tr2192-y.jpg','https://gid.com.ru/d/tr2133tf_140643.jpg','https://gid.com.ru/d/tr2133_491847.jpg','https://gid.com.ru/d/bez_imeni-12.png']
+          photos=[];errors=[]
+          for url in urls:
+              try:photos.append(g['photo'](url))
+              except Exception as e:errors.append({'url':url,'error':str(e)})
+          report={'photos':photos,'errors':errors,'expected_unique':len(urls),'completed_unique':len(photos),'bytes_before':sum(x['before'] for x in photos),'bytes_after':sum(x['after'] for x in photos)}
+          (g['OUT']/'photo-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2))
+          (g['ROOT']/'report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2))
+          assert not errors,errors
+          PY
+      - name: Publish supplementary images without changing previous batches
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add --sparse photos/gid-20260922-extra
+          git commit -m 'Publish five lossless GID photos from the supplied original addresses'
+          git pull --rebase origin main
+          git push origin HEAD:main
+      - name: Verify published URLs
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          script=Path('scripts/prepare-gid-20260922.py').read_text().rsplit("\n{'sources':",1)[0]
+          g={};exec(script,g);g['OUT']=Path('gid-extra-work');g['verify']()
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gid-extra-photo-reports
+          retention-days: 7
+          path: gid-extra-work
