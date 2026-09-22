@@ -1,6 +1,8 @@
 name: GID automatic update file
 
 on:
+  push:
+    paths: ['.github/workflows/gid-automatic-update-file.yml']
   workflow_dispatch:
   schedule:
     - cron: '17 */3 * * *'
