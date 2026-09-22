@@ -1,0 +1,48 @@
+name: GID sample current compare
+on:
+  push:
+    paths: ['.github/workflows/gid-sample-current-20260922.yml']
+permissions:
+  contents: read
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Compare sample in public Tilda and supplier XML
+        run: |
+          mkdir -p reports
+          python - <<'PY'
+          import json,time,urllib.parse,urllib.request,xml.etree.ElementTree as ET
+          from pathlib import Path
+          SKU='L070BMGD'; EXT='GID-L070BMGD'; UID='986190510523'
+          feed='https://gid.com.ru/e/share/yandex_turbo'
+          req=urllib.request.Request(feed,headers={'User-Agent':'Mozilla/5.0','Cache-Control':'no-cache'})
+          with urllib.request.urlopen(req,timeout=40) as r: raw=r.read()
+          raw=raw.replace(b'<!DOCTYPE yml_catalog SYSTEM "shops.dtd">',b'',1)
+          root=ET.fromstring(raw)
+          offers=[o for o in root.findall('./shop/offers/offer') if (o.findtext('vendorCode') or '').strip()==SKU]
+          if len(offers)!=1: raise SystemExit('Supplier mapping mismatch')
+          o=offers[0]
+          supplier={'price':o.findtext('price'),'quantity':o.findtext('count'),'available':o.get('available'),'feed_date':root.get('date')}
+          token=str(time.time_ns()); products=[]; page=1; total=None
+          while True:
+              q=urllib.parse.urlencode({'storepartuid':'724727657493','recid':'3742006901','size':'100','slice':str(page),'sort[created]':'desc','_gvs':token})
+              req=urllib.request.Request('https://store.tildaapi.com/api/getproductslist/?'+q,headers={'User-Agent':'Mozilla/5.0','Cache-Control':'no-cache'})
+              with urllib.request.urlopen(req,timeout=35) as r:data=json.load(r)
+              if total is None: total=int(data['total'])
+              products.extend(data['products'])
+              if len(products)>=total: break
+              page+=1
+          matches=[p for p in products if str(p.get('uid'))==UID and str(p.get('externalid'))==EXT and str(p.get('sku'))==SKU]
+          if len(matches)!=1: raise SystemExit('Tilda mapping mismatch')
+          p=matches[0]
+          result={'supplier':supplier,'tilda':{'price':p.get('price'),'quantity':p.get('quantity'),'title':p.get('title')},'store_modified':False}
+          Path('reports/current.json').write_text(json.dumps(result,ensure_ascii=False,indent=2))
+          print(json.dumps(result,ensure_ascii=False))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gid-sample-current
+          retention-days: 3
+          path: reports
