@@ -1,0 +1,41 @@
+name: Read Gid import sources 20260922
+on:
+  push:
+    paths: ['.github/workflows/gid-source-check-20260922.yml']
+permissions:
+  contents: read
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Read public catalogue and supplier samples
+        run: |
+          mkdir -p checks
+          python - <<'PY'
+          import concurrent.futures,json,time,urllib.parse,urllib.request
+          from pathlib import Path
+          out=Path('checks')
+          def get(url):
+              req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0','Cache-Control':'no-cache'})
+              with urllib.request.urlopen(req,timeout=45) as r:return r.read()
+          def page(n):
+              q=urllib.parse.urlencode({'storepartuid':'724727657493','recid':'3742006901','size':'100','slice':str(n),'sort[created]':'desc','_gvs':str(time.time_ns())})
+              return json.loads(get('https://store.tildaapi.com/api/getproductslist/?'+q))
+          first=page(1)
+          with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:pages=[first]+list(pool.map(page,range(2,(int(first['total'])+99)//100+1)))
+          items=[p for x in pages for p in x['products']]
+          assert len(items)==int(first['total']) and len(set(str(p['uid']) for p in items))==len(items)
+          (out/'catalogue.json').write_text(json.dumps({'products':items,'metadata':{k:v for k,v in first.items() if k!='products'}},ensure_ascii=False,indent=2))
+          urls={'live.html':'https://entertain-becalmed-buzzard.tilda.ws/gid-v-mire','edessa.html':'https://gid.com.ru/shop/product/edessa-l070-bm-gd','sink777s.html':'https://gid.com.ru/shop/product/777s','tr2198.html':'https://gid.com.ru/shop/product/tr2198','bm2198.html':'https://gid.com.ru/shop/product/bm2198','about.html':'https://gid.com.ru/o-kompanii','sample.jpg':'https://gid.com.ru/d/edessa_l070-bm-gd.jpg'}
+          for name,url in urls.items():
+              try:(out/name).write_bytes(get(url))
+              except Exception as exc:(out/(name+'.error.txt')).write_text(str(exc))
+          print('Complete catalogue products:',len(items))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gid-source-checks-20260922
+          retention-days: 3
+          path: checks
