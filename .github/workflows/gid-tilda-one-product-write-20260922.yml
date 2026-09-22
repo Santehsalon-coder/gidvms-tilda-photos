@@ -15,7 +15,7 @@ jobs:
         run: |
           mkdir -p reports
           python - <<'PY'
-          import base64, http.cookiejar, json, os, re, time, urllib.parse, urllib.request
+          import base64, http.cookiejar, json, os, re, time, urllib.parse, urllib.request\n          from decimal import Decimal
           import xml.etree.ElementTree as ET
           from pathlib import Path
 
@@ -50,7 +50,7 @@ jobs:
               return matches[0],total
 
           before,total_before=public_product()
-          if str(before.get('price')) not in ('13500','13500.0','13500.00') or str(before.get('quantity'))!='7':
+          if Decimal(str(before.get('price'))) != Decimal('13500') or str(before.get('quantity'))!='7':
               raise SystemExit('Pre-write values changed; refusing to run write test')
           protected_keys=['title','descr','text','externalid','sku','brand','characteristics','gallery','url']
           protected_before={k:before.get(k) for k in protected_keys}
@@ -164,7 +164,7 @@ jobs:
           Path('reports/result.json').write_text(json.dumps(result,ensure_ascii=False,indent=2))
           if not result['protected_fields_unchanged'] or not result['catalogue_total_unchanged']:
               raise SystemExit('Protected store data changed; stop before scheduling')
-          if str(after.get('price')) not in ('13500','13500.0','13500.00') or str(after.get('quantity'))!='7':
+          if Decimal(str(after.get('price'))) != Decimal('13500') or str(after.get('quantity'))!='7':
               raise SystemExit('Price/quantity not preserved after test')
           print('One-product no-op CommerceML write test succeeded; protected fields unchanged.')
           PY
