@@ -1,0 +1,64 @@
+{
+  "photos": [
+    {
+      "source": "https://gid.com.ru/d/tr2192y.jpg",
+      "path": "photos/gid-20260922-extra/6e09ad8c61cea225813ae432.jpg",
+      "before": 584048,
+      "after": 539945,
+      "width": 1564,
+      "height": 1920,
+      "method": "jpeg-lossless",
+      "pixels_equal": true,
+      "sha256": "f03ae547d229f9af256b553c195a0e352b6d95c31b8bf2193f4cb848f17906cb"
+    },
+    {
+      "source": "https://gid.com.ru/d/unitaz_tr2192-y.jpg",
+      "path": "photos/gid-20260922-extra/0ee0a1f71e94e4e2bce145b3.jpg",
+      "before": 85278,
+      "after": 84366,
+      "width": 900,
+      "height": 1200,
+      "method": "jpeg-lossless",
+      "pixels_equal": true,
+      "sha256": "e051f6faa4e1881834c00c186e7c50be6eb03b236eb3749f257740828905f254"
+    },
+    {
+      "source": "https://gid.com.ru/d/tr2133tf_140643.jpg",
+      "path": "photos/gid-20260922-extra/6819aecddd0f2e4c2250620f.jpg",
+      "before": 229466,
+      "after": 207717,
+      "width": 1920,
+      "height": 1920,
+      "method": "jpeg-lossless",
+      "pixels_equal": true,
+      "sha256": "c6d9b5858768834a99e0ddab6f32e99856ce6f065c658d929153b978d63a768f"
+    },
+    {
+      "source": "https://gid.com.ru/d/tr2133_491847.jpg",
+      "path": "photos/gid-20260922-extra/ad08131f135469a39f3ddb04.jpg",
+      "before": 79253,
+      "after": 74913,
+      "width": 1179,
+      "height": 1148,
+      "method": "jpeg-lossless",
+      "pixels_equal": true,
+      "sha256": "6c2a77661172d80d1882c244c55a60ab592f1f0b87ae9ffc9f418a95a7595d5a"
+    },
+    {
+      "source": "https://gid.com.ru/d/bez_imeni-12.png",
+      "path": "photos/gid-20260922-extra/3332ce6aa3b46c26412a103a.webp",
+      "before": 66529,
+      "after": 35842,
+      "width": 400,
+      "height": 400,
+      "method": "webp-lossless",
+      "pixels_equal": true,
+      "sha256": "31f9603b0761f56078317b1179ef5a3be8627b88e76c03d5c20a4751af6baad3"
+    }
+  ],
+  "errors": [],
+  "expected_unique": 5,
+  "completed_unique": 5,
+  "bytes_before": 1044574,
+  "bytes_after": 942783
+}
