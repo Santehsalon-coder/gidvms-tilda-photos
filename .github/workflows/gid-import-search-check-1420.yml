@@ -1,0 +1,48 @@
+name: GID confirmed model search check
+on:
+  push:
+    paths: ['.github/workflows/gid-import-search-check-1420.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - run: |
+          python -m pip install -q playwright
+          python -m playwright install --with-deps chromium >/dev/null
+      - name: Check actual published search and gallery without test patches
+        run: |
+          mkdir -p search-check
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from playwright.sync_api import sync_playwright
+          out=Path('search-check');base='https://entertain-becalmed-buzzard.tilda.ws/gid-v-mire'
+          results=[];errors=[]
+          with sync_playwright() as pw:
+              browser=pw.chromium.launch(headless=True)
+              page=browser.new_page(viewport={'width':1440,'height':1000})
+              page.on('pageerror',lambda e:errors.append(str(e)))
+              try:
+                  page.goto(base+'?gc=all&q=L070-BM-GD',wait_until='domcontentloaded',timeout=60000)
+                  page.wait_for_function('window.GVS_PRODUCTS13?.getSnapshot?.().complete === true',timeout=60000)
+                  page.wait_for_timeout(2200)
+                  for label,w,h in [('desktop',1440,1000),('tablet',768,1024),('mobile',390,844)]:
+                      page.set_viewport_size({'width':w,'height':h});page.wait_for_timeout(1000)
+                      state=page.evaluate('''()=>{const s=GVS_PRODUCTS13.getSnapshot();return{url:location.href,version:GVS_PRODUCTS13.providerVersion,total:s.total,gid:s.items.filter(p=>String(p.externalid||'').startsWith('GID-')).length,body:(document.querySelector('#gvs-category-page')||document.body).innerText,cards:[...document.querySelectorAll('#gvs-category-page .gc10-card')].map(e=>({uid:e.dataset.productUid,text:e.innerText,images:[...e.querySelectorAll('img')].map(i=>({src:i.currentSrc,loaded:!!i.naturalWidth}))})),width:innerWidth,scrollWidth:document.documentElement.scrollWidth}}''')
+                      state['view']=label;results.append(state);page.screenshot(path=str(out/(label+'.png')))
+                  # Only inspect a product view, never click add-to-cart or submit an order.
+                  page.goto(base+'?gp=PLACEHOLDER',wait_until='domcontentloaded',timeout=60000) if False else None
+              except Exception as exc:errors.append(str(exc))
+              browser.close()
+          (out/'result.json').write_text(json.dumps({'site_modified':False,'views':results,'errors':errors},ensure_ascii=False,indent=2))
+          print(json.dumps({'views':[{'view':r['view'],'total':r['total'],'gid':r['gid'],'cards':len(r['cards'])} for r in results],'errors':errors},ensure_ascii=False))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gid-confirmed-search-1420
+          retention-days: 3
+          path: search-check
