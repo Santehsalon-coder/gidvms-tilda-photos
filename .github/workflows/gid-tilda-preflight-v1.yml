@@ -1,0 +1,73 @@
+name: GID - Tilda connection test
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/gid-tilda-preflight-v1.yml']
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: 'preview = compare only; check-auth = login check only after enabling Tilda connector'
+        type: choice
+        options: [preview, check-auth]
+        default: preview
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: gid-tilda-preflight
+  cancel-in-progress: false
+jobs:
+  preflight:
+    if: github.repository == 'Santehsalon-coder/gidvms-tilda-photos' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Load the reviewed pinned preflight script without cloning the image archive
+        run: |
+          python - <<'PY'
+          import hashlib
+          from pathlib import Path
+          import urllib.request
+          url='https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/ca24ec325cfac7459a11db7bdc33bd856a15b8da/sync/gid_preflight_v1.py'
+          with urllib.request.urlopen(url,timeout=35) as response:
+              code=response.read(100001)
+          if hashlib.sha256(code).hexdigest()!='7f102d5d194a84a9072e5d20e642e435d38559c1615f7f699f8b574ae711bedb':
+              raise SystemExit('Script checksum mismatch; refusing to execute.')
+          Path('gid_preflight.py').write_bytes(code)
+          Path('reports').mkdir(exist_ok=True)
+          PY
+      - name: Check that the secret exists without showing or sending it
+        env:
+          TILDA_COMMERCEML_PASSWORD: ${{ secrets.TILDA_COMMERCEML_PASSWORD }}
+        run: |
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          value=os.environ.pop('TILDA_COMMERCEML_PASSWORD','')
+          present=bool(value)
+          whitespace_ok=bool(value) and value==value.strip() and '\n' not in value and '\r' not in value
+          del value
+          result={'secret_present':present,'no_outer_whitespace':whitespace_ok,'value_logged':False,'value_sent_to_tilda':False}
+          Path('reports/secret-check.json').write_text(json.dumps(result,indent=2))
+          if not present or not whitespace_ok:
+              raise SystemExit('Connector secret is missing or has unwanted whitespace. No value logged.')
+          print('Connector secret is available to the job; value not printed or sent.')
+          PY
+      - name: Run fifteen local safety checks
+        run: python gid_preflight.py self-test
+      - name: Compare one imported product without changing Tilda
+        run: python gid_preflight.py preview
+      - name: Optional manual login-only check; no product or order exchange
+        if: github.event_name == 'workflow_dispatch' && inputs.phase == 'check-auth'
+        env:
+          TILDA_COMMERCEML_PASSWORD: ${{ secrets.TILDA_COMMERCEML_PASSWORD }}
+          TILDA_AUTH_CHECK_APPROVED: 'YES'
+        run: python gid_preflight.py check-auth
+      - name: Save only non-sensitive verification reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gid-tilda-preflight-v1
+          retention-days: 3
+          path: reports
+          if-no-files-found: ignore
