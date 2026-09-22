@@ -7,38 +7,52 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 5
     steps:
-      - name: Probe catalogue source and cache headers read-only
+      - name: Install browser
+        run: |
+          python -m pip install -q playwright
+          python -m playwright install --with-deps chromium >/dev/null
+      - name: Check storefront without modifying site or products
         run: |
           mkdir -p diagnosis
           python - <<'PY'
-          import json,time,urllib.request,urllib.parse,concurrent.futures
+          import json
           from pathlib import Path
+          from playwright.sync_api import sync_playwright
           out=Path('diagnosis')
-          base={'storepartuid':'724727657493','recid':'3742006901','size':'100','slice':'1'}
-          probes=[('global-original',dict(base)),('global-no-cache',{**base,'_':str(time.time_ns())}),('global-size36',{**base,'size':'36'}),('section-kitchen',{**base,'storepartuid':'156462311843'}),('section-kitchen-no-cache',{**base,'storepartuid':'156462311843','_':str(time.time_ns())}),('global-search',{**base,'filters[search]':'Splenka'}),('global-size1000',{**base,'size':'1000'})]
-          def fetch(probe):
-              name,params=probe
-              url='https://store.tildaapi.com/api/getproductslist/?'+urllib.parse.urlencode(params)
-              result={'name':name,'url':url}
-              try:
-                  req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0','Cache-Control':'no-cache','Pragma':'no-cache'})
-                  with urllib.request.urlopen(req,timeout=35) as r:
-                      data=r.read();result.update(status=r.status,headers=dict(r.headers))
-                  p=json.loads(data)
-                  (out/(name+'.json')).write_text(json.dumps(p,ensure_ascii=False))
-                  result.update(total=p.get('total'),received=len(p.get('products',[])),splenka=[{'uid':i.get('uid'),'sku':i.get('sku'),'title':i.get('title'),'chars':i.get('characteristics')} for i in p.get('products',[]) if 'splenka' in str(i.get('title','')).lower()])
-              except Exception as e:result['error']=str(e)
-              return result
-          with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:results=list(pool.map(fetch,probes))
-          (out/'summary.json').write_text(json.dumps(results,ensure_ascii=False,indent=2))
-          print(json.dumps(results,ensure_ascii=False),flush=True)
+          url='https://entertain-becalmed-buzzard.tilda.ws/gid-v-mire?gc=kuhonnye-moyki&gs=moyki-dlya-kuhni'
+          results=[]
+          with sync_playwright() as pw:
+              browser=pw.chromium.launch(headless=True)
+              context=browser.new_context(viewport={'width':1440,'height':1000})
+              page=context.new_page()
+              errors=[]
+              page.on('pageerror',lambda e:errors.append(str(e)))
+              page.goto(url,wait_until='domcontentloaded',timeout=60000)
+              page.wait_for_function("window.GVS_PRODUCTS13?.getSnapshot?.().complete === true",timeout=60000)
+              page.wait_for_timeout(2500)
+              for label,width,height in [('desktop',1440,1000),('tablet',768,1024),('mobile',390,844)]:
+                  page.set_viewport_size({'width':width,'height':height})
+                  page.wait_for_timeout(1200)
+                  result=page.evaluate('''()=>{const s=GVS_PRODUCTS13.getSnapshot();return{url:location.href,total:s.total,loaded:s.items.length,complete:s.complete,splenkaProducts:s.items.filter(p=>/кухонная мойка splenka/i.test(p.title||'')).map(p=>({uid:p.uid,sku:p.sku,title:p.title,characteristics:p.characteristics})),cards:Array.from(document.querySelectorAll('#gvs-category-page .gc10-card')).map(e=>({uid:e.dataset.productUid,text:e.innerText,img:e.querySelector('img')?.currentSrc,loaded:!!e.querySelector('img')?.naturalWidth})),text:document.querySelector('#gvs-category-page')?.innerText||document.body.innerText,viewport:innerWidth,scrollWidth:document.documentElement.scrollWidth}}''')
+                  result['view']=label
+                  results.append(result)
+                  page.screenshot(path=str(out/(label+'.png')))
+              (out/'verification.json').write_text(json.dumps({'views':results,'errors':errors},ensure_ascii=False,indent=2))
+              (out/'runtime.html').write_text(page.content())
+              for cat in ['zolotaya-santehnika','oruzheynaya-stal','santehnika-satin']:
+                  page.goto('https://entertain-becalmed-buzzard.tilda.ws/gid-v-mire?gc='+cat+'&gs=kuhonnye-moyki',wait_until='domcontentloaded',timeout=60000)
+                  page.wait_for_timeout(1500)
+                  data=page.evaluate("()=>({url:location.href,text:document.querySelector('#gvs-category-page')?.innerText||'',cards:Array.from(document.querySelectorAll('#gvs-category-page .gc10-card')).map(e=>({uid:e.dataset.productUid,text:e.innerText}))})")
+                  (out/(cat+'.json')).write_text(json.dumps(data,ensure_ascii=False,indent=2))
+              print(json.dumps({'views':[{'view':r['view'],'total':r['total'],'newSinkProducts':len(r['splenkaProducts']),'cards':len(r['cards']),'splenkaCards':sum('Splenka' in c['text'] for c in r['cards']),'viewport':r['viewport'],'scrollWidth':r['scrollWidth']} for r in results],'errors':errors},ensure_ascii=False),flush=True)
+              browser.close()
           PY
-      - name: Return source diagnostics
+      - name: Return browser verification
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: storefront-feed-probes-20260922
+          name: storefront-visible-verification-20260922
           retention-days: 3
           path: diagnosis
