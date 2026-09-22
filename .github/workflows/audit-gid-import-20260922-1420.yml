@@ -1,0 +1,92 @@
+name: Audit GID import after export 20260922
+on:
+  push:
+    paths: ['.github/workflows/audit-gid-import-20260922-1420.yml']
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - name: Read complete published catalogue and check GID image responses
+        run: |
+          mkdir -p audit
+          python - <<'PY'
+          import concurrent.futures,json,time,urllib.parse,urllib.request
+          from pathlib import Path
+          out=Path('audit'); token='audit-'+str(time.time_ns())
+          def fetch_page(n):
+              q=urllib.parse.urlencode({'storepartuid':'724727657493','recid':'3742006901','size':'100','slice':str(n),'sort[created]':'desc','_gvs':token})
+              req=urllib.request.Request('https://store.tildaapi.com/api/getproductslist/?'+q,headers={'User-Agent':'Mozilla/5.0','Cache-Control':'no-cache'})
+              with urllib.request.urlopen(req,timeout=30) as r:return json.load(r)
+          first=fetch_page(1)
+          with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+              pages=[first]+list(pool.map(fetch_page,range(2,(int(first['total'])+99)//100+1)))
+          products=[p for page in pages for p in page['products']]
+          assert len(products)==int(first['total']) and len(set(str(p['uid']) for p in products))==len(products)
+          selected=[p for p in products if str(p.get('externalid','')).startswith('GID-')]
+          (out/'catalogue.json').write_text(json.dumps({'products':products,'metadata':{k:v for k,v in first.items() if k!='products'},'time_utc':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())},ensure_ascii=False))
+          def gallery(p):
+              g=p.get('gallery',[])
+              return json.loads(g) if isinstance(g,str) else g
+          urls=sorted(set(x['img'] for p in selected for x in gallery(p) if x.get('img')))
+          def check_image(url):
+              error=None
+              for attempt in range(2):
+                  try:
+                      req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0','Range':'bytes=0-63'})
+                      with urllib.request.urlopen(req,timeout=12) as r:
+                          head=r.read(64);status=r.status;mime=r.headers.get('Content-Type','')
+                      signature=head.startswith(b'\xff\xd8\xff') or head.startswith(b'\x89PNG\r\n\x1a\n') or (head[:4]==b'RIFF' and head[8:12]==b'WEBP') or head.startswith((b'GIF87a',b'GIF89a')) or b'ftypavif' in head[:32]
+                      return {'url':url,'status':status,'content_type':mime,'image_header_valid':bool(signature),'ok':status in (200,206) and mime.startswith('image/') and bool(signature)}
+                  except Exception as exc:error=str(exc);time.sleep(1)
+              return {'url':url,'ok':False,'error':error}
+          with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:checks=list(pool.map(check_image,urls))
+          result={'type':'HTTP status, content type and first 64 bytes; not full visual inspection','total_products':len(products),'gid_imported':len(selected),'unique_photos':len(urls),'gallery_entries':sum(len(gallery(p)) for p in selected),'ok':sum(c['ok'] for c in checks),'failures':[c for c in checks if not c['ok']],'checks':checks}
+          (out/'image-checks.json').write_text(json.dumps(result,ensure_ascii=False))
+          print(json.dumps({k:v for k,v in result.items() if k!='checks'},ensure_ascii=False))
+          PY
+      - name: Install isolated browser for actual published-page check
+        run: |
+          python -m pip install -q playwright
+          python -m playwright install --with-deps chromium >/dev/null
+      - name: Read catalog and search in desktop, tablet and mobile browser sizes
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from playwright.sync_api import sync_playwright
+          out=Path('audit');base='https://entertain-becalmed-buzzard.tilda.ws/gid-v-mire'
+          results=[];errors=[]
+          with sync_playwright() as pw:
+              browser=pw.chromium.launch(headless=True)
+              page=browser.new_page(viewport={'width':1440,'height':1000})
+              page.on('pageerror',lambda e:errors.append(str(e)))
+              try:
+                  page.goto(base+'?gc=all&q=N9397',wait_until='domcontentloaded',timeout=60000)
+                  page.wait_for_function('window.GVS_PRODUCTS13?.getSnapshot?.().complete === true',timeout=60000)
+                  page.wait_for_timeout(3000)
+                  for label,w,h in [('desktop',1440,1000),('tablet',768,1024),('mobile',390,844)]:
+                      page.set_viewport_size({'width':w,'height':h});page.wait_for_timeout(1200)
+                      data=page.evaluate('''()=>{const s=GVS_PRODUCTS13.getSnapshot();return{url:location.href,providerVersion:GVS_PRODUCTS13.providerVersion,total:s.total,loaded:s.items.length,complete:s.complete,refreshError:s.refreshError,gid:s.items.filter(p=>String(p.externalid||'').startsWith('GID-')).length,body:(document.querySelector('#gvs-category-page')||document.body).innerText,cards:[...document.querySelectorAll('#gvs-category-page .gc10-card')].map(e=>({uid:e.dataset.productUid,text:e.innerText,imageLoaded:!!e.querySelector('img')?.naturalWidth})),width:innerWidth,scrollWidth:document.documentElement.scrollWidth}}''')
+                      data['view']=label;results.append(data)
+                      page.screenshot(path=str(out/('search-'+label+'.png')))
+                  page.set_viewport_size({'width':1440,'height':1000})
+                  page.goto(base+'?gc=rakoviny',wait_until='domcontentloaded',timeout=60000)
+                  page.wait_for_timeout(3500)
+                  results.append(page.evaluate('''()=>({view:'sink-category',url:location.href,body:(document.querySelector('#gvs-category-page')||document.body).innerText,cards:[...document.querySelectorAll('#gvs-category-page .gc10-card')].map(e=>({uid:e.dataset.productUid,text:e.innerText})),links:[...document.querySelectorAll('a')].filter(e=>/биде|писсуар|раковин/i.test(e.textContent)).map(e=>({title:e.textContent.trim(),href:e.getAttribute('href')}))})'''))
+                  page.screenshot(path=str(out/'sink-category-desktop.png'))
+                  (out/'published.html').write_text(page.content())
+              except Exception as exc:errors.append(str(exc))
+              browser.close()
+          (out/'browser-checks.json').write_text(json.dumps({'site_modified':False,'views':results,'errors':errors},ensure_ascii=False))
+          print(json.dumps({'views':len(results),'errors':errors},ensure_ascii=False))
+          PY
+      - name: Return read-only audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gid-import-audit-1420
+          retention-days: 3
+          path: audit
