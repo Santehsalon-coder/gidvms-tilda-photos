@@ -1,0 +1,34 @@
+name: Final GID identity check
+on:
+  push:
+    paths: ['.github/workflows/gid-final-identity-check-20260922.yml']
+permissions:
+  contents: read
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Read the full public catalogue only
+        run: |
+          mkdir -p final-check
+          python - <<'PY'
+          import concurrent.futures,json,time,urllib.parse,urllib.request
+          from pathlib import Path
+          token=str(time.time_ns())
+          def page(n):
+              q=urllib.parse.urlencode({'storepartuid':'724727657493','recid':'3742006901','size':'100','slice':str(n),'sort[created]':'desc','_gvs':token})
+              req=urllib.request.Request('https://store.tildaapi.com/api/getproductslist/?'+q,headers={'User-Agent':'Mozilla/5.0','Cache-Control':'no-cache'})
+              with urllib.request.urlopen(req,timeout=35) as r:return json.load(r)
+          first=page(1)
+          with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:pages=[first]+list(pool.map(page,range(2,(int(first['total'])+99)//100+1)))
+          products=[p for x in pages for p in x['products']]
+          assert len(products)==int(first['total']) and len(set(str(p['uid']) for p in products))==len(products)
+          Path('final-check/catalogue.json').write_text(json.dumps({'products':products,'read_utc':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'total':len(products)},ensure_ascii=False))
+          print('Total products:',len(products))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gid-final-catalogue-check
+          retention-days: 3
+          path: final-check
