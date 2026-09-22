@@ -1,0 +1,54 @@
+name: Inspect GID supplier feed once
+on:
+  push:
+    paths: ['.github/workflows/inspect-gid-feed-20260922.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Read and validate the supplied public feed
+        run: |
+          mkdir -p feed-inspection
+          python - <<'PY'
+          import collections, datetime, hashlib, json, urllib.request, xml.etree.ElementTree as ET
+          from pathlib import Path
+          out=Path('feed-inspection')
+          url='https://gid.com.ru/e/share/yandex_turbo'
+          result={'source':url,'read_at_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'store_modified':False,'recurring_sync_configured':False}
+          try:
+              req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0','Cache-Control':'no-cache'})
+              with urllib.request.urlopen(req,timeout=60) as response:
+                  data=response.read(20000001)
+                  result.update(status=response.status,content_type=response.headers.get('Content-Type'),final_url=response.url,last_modified=response.headers.get('Last-Modified'),etag=response.headers.get('ETag'))
+              if len(data)>20000000:raise ValueError('Feed exceeds the 20 MB inspection limit')
+              (out/'supplier-feed.xml').write_bytes(data)
+              result.update(bytes=len(data),sha256=hashlib.sha256(data).hexdigest())
+              root=ET.fromstring(data)
+              result.update(root=root.tag,root_attributes=root.attrib)
+              offers=root.findall('.//offer')
+              result.update(offer_count=len(offers),item_count=len(root.findall('.//item')),category_count=len(root.findall('.//category')))
+              result['offer_attribute_counts']={key:dict(collections.Counter(o.get(key,'<missing>') for o in offers)) for key in ('available','type')}
+              result['field_presence']=dict(collections.Counter(c.tag for o in offers for c in o))
+              result['param_names']=dict(collections.Counter(p.get('name','') for o in offers for p in o.findall('param')))
+              ids=[o.get('id') for o in offers]
+              result['duplicate_ids']=[k for k,v in collections.Counter(ids).items() if v>1]
+              result['examples']=[ET.tostring(o,encoding='unicode') for o in offers[:3]]
+              result['shop_fields']={tag:root.findtext('.//shop/'+tag) for tag in ('name','company','url')}
+              (out/'feed-report.json').write_text(json.dumps(result,ensure_ascii=False,indent=2))
+              print(json.dumps(result,ensure_ascii=False,indent=2))
+          except Exception as exc:
+              result['error']=str(exc)
+              (out/'feed-report.json').write_text(json.dumps(result,ensure_ascii=False,indent=2))
+              print(json.dumps(result,ensure_ascii=False,indent=2))
+              raise
+          PY
+      - name: Return the read-only inspection
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gid-feed-inspection-20260922
+          retention-days: 3
+          path: feed-inspection
