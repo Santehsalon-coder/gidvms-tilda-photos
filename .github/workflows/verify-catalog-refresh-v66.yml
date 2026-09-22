@@ -1,0 +1,110 @@
+name: Verify catalog refresh v66
+on:
+  push:
+    paths: ['.github/workflows/verify-catalog-refresh-v66.yml']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Install isolated test browser
+        run: |
+          python -m pip install -q playwright
+          python -m playwright install --with-deps chromium >/dev/null
+      - name: Compare published loader and proposed freshness correction
+        run: |
+          mkdir -p verification
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,json,time,urllib.parse
+          from playwright.sync_api import sync_playwright
+          out=Path('verification')
+          base='https://entertain-becalmed-buzzard.tilda.ws/gid-v-mire'
+          category=base+'?gc=kuhonnye-moyki&gs=moyki-dlya-kuhni'
+          changes=[
+            ('providerVersion>=46','providerVersion>=66'),
+            ('const t="gvs-products-cache-session-v59",e="gvs-products-cache-v59";try{','const t="gvs-products-cache-session-v66",e="gvs-products-cache-v66";let verified66=false;const nonce66=()=>"66-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,10);try{sessionStorage.removeItem("gvs-products-cache-session-v59"),localStorage.removeItem("gvs-products-cache-v59"),'),
+            ('size:"100",slice:String(t)}),{signal:o.signal}','size:"100",slice:String(t),_gvs:e.request66}),{signal:o.signal,cache:"no-store"}'),
+            ('const t={id:++c,controls:new Set,cancelled:!1,retained:N()}','const t={id:++c,controls:new Set,cancelled:!1,retained:N(),request66:nonce66()}'),
+            ('return g=h,E(b,p,w,!f)','return verified66=true,g=h,E(b,p,w,!f)'),
+            ('function P(){return p||i||L(),i&&f(s)?(S(),Promise.resolve(i)):N()?((!h||Date.now()-h>=3e4)&&R().catch(()=>{}),Promise.resolve(i)):R()}','function P(){p||i||L();if(i&&f(s)){S();if(!verified66&&(!h||Date.now()-h>=3e4))R().catch(()=>{});return Promise.resolve(i)}return N()?((!h||Date.now()-h>=3e4)&&R().catch(()=>{}),Promise.resolve(i)):R()}'),
+            ('P.providerVersion=46','P.providerVersion=66'),
+            ('productuid:t}),{signal:o.signal,cache:"no-store"}','productuid:t,_gvs:nonce66()}),{signal:o.signal,cache:"no-store"}'),
+            ('a?R():i&&f(s)?Promise.resolve(i):R()','a?R():verified66&&i&&f(s)?Promise.resolve(i):R()'),
+            ('window.GVS_PRODUCTS13=P})();','window.GVS_PRODUCTS13=P;function refresh66(){if(document.visibilityState==="hidden"||!i||a||verified66&&f(s)||h&&Date.now()-h<3e4)return;R().catch(()=>{})}window.addEventListener("pageshow",refresh66);window.addEventListener("focus",refresh66);window.addEventListener("online",refresh66);document.addEventListener("visibilitychange",refresh66);setInterval(refresh66,60000)})();')
+          ]
+          def snapshot(page):
+              return page.evaluate('''()=>{const s=GVS_PRODUCTS13.getSnapshot();return {version:GVS_PRODUCTS13.providerVersion,total:s.total,loaded:s.loaded,complete:s.complete,refreshing:s.refreshing,error:s.error,refreshError:s.refreshError,allSplenka:s.items.filter(p=>/splenka/i.test(p.title||'')).length,newSinks:s.items.filter(p=>/кухонная мойка splenka/i.test(p.title||'')).length,cards:[...document.querySelectorAll('#gvs-category-page .gc10-card')].map(e=>({uid:e.dataset.productUid,text:e.innerText})),width:innerWidth,scrollWidth:document.documentElement.scrollWidth}}''')
+          def ready(page):
+              page.wait_for_function("window.GVS_PRODUCTS13?.getSnapshot?.().complete === true && !window.GVS_PRODUCTS13.getSnapshot().refreshing",timeout=60000)
+              page.wait_for_timeout(1800)
+          report={'time_utc':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'site_modified':False}
+          with sync_playwright() as p:
+              browser=p.chromium.launch(headless=True)
+              old_context=browser.new_context(viewport={'width':1440,'height':1000})
+              old_page=old_context.new_page()
+              old_page.goto(category,wait_until='domcontentloaded',timeout=60000)
+              ready(old_page)
+              report['published']=snapshot(old_page)
+              script=old_page.evaluate('''()=>[...document.scripts].map(s=>s.textContent).find(s=>s.includes('providerVersion>=46')&&s.includes('window.GVS_PRODUCTS13=P})()'))''')
+              assert script,'Published provider has changed; do not apply an unverified patch'
+              start=script.index('(()=>{"use strict";if(window.GVS_PRODUCTS13?.providerVersion')
+              end=script.index('window.GVS_PRODUCTS13=P})()',start)+len('window.GVS_PRODUCTS13=P})()')
+              provider=script[start:end]+';'
+              report['old_provider_sha256']=hashlib.sha256(provider.encode()).hexdigest()
+              assert report['old_provider_sha256']=='7a9dcb549f6689070f0b52129d238a5aa6af546fc533b1064f8b0a43b26beac3'
+              for before,after in changes:
+                  assert provider.count(before)==1,before
+                  provider=provider.replace(before,after)
+              report['tested_provider_sha256']=hashlib.sha256(provider.encode()).hexdigest()
+              assert report['tested_provider_sha256']=='34af159756e6ed2450fd89142ce23eae2bd9e49666352ad02fab83af694ab0a4'
+              old_page.screenshot(path=str(out/'published-desktop.png'))
+              (out/'published.html').write_text(old_page.content())
+              context=browser.new_context(viewport={'width':1440,'height':1000})
+              context.add_init_script(provider)
+              page=context.new_page();errors=[];requests=[]
+              page.on('pageerror',lambda e:errors.append(str(e)))
+              page.on('request',lambda r:requests.append(r.url) if '/api/getproductslist/' in r.url else None)
+              page.goto(category,wait_until='domcontentloaded',timeout=60000)
+              ready(page)
+              views=[]
+              for label,width,height in [('desktop',1440,1000),('tablet',768,1024),('mobile',390,844)]:
+                  page.set_viewport_size({'width':width,'height':height});page.wait_for_timeout(800)
+                  s=snapshot(page);s['view']=label
+                  views.append(s)
+                  page.screenshot(path=str(out/('corrected-'+label+'.png')))
+                  assert s['version']==66 and s['newSinks']==13
+                  assert len(s['cards'])==19 and sum('Splenka' in c['text'] for c in s['cards'])==13
+                  assert s['scrollWidth']<=s['width']
+              report['corrected_views']=views
+              page.set_viewport_size({'width':1440,'height':1000})
+              first=page.locator('#gvs-category-page .gc10-card').filter(has_text='Splenka').first
+              first.scroll_into_view_if_needed();page.wait_for_timeout(1700)
+              report['first_photo_loaded']=first.locator('img').first.evaluate('(img)=>img.complete&&img.naturalWidth>0')
+              page.screenshot(path=str(out/'corrected-splenka-desktop.png'))
+              page.goto(base+'?gc=all&q=Splenka',wait_until='domcontentloaded',timeout=60000)
+              ready(page)
+              report['search']=snapshot(page)
+              page.screenshot(path=str(out/'corrected-search-desktop.png'))
+              assert len(report['search']['cards'])==15
+              # Verify every network generation has an explicit revision and bypasses the fixed legacy URL.
+              urls=[u for u in requests if urllib.parse.parse_qs(urllib.parse.urlparse(u).query).get('size')==['100']]
+              report['catalogue_requests']=urls
+              assert urls and all('_gvs=' in u for u in urls)
+              tokens={urllib.parse.parse_qs(urllib.parse.urlparse(u).query)['_gvs'][0] for u in urls}
+              report['distinct_network_generations']=len(tokens)
+              report['browser_errors']=errors
+              (out/'verification.json').write_text(json.dumps(report,ensure_ascii=False,indent=2))
+              assert not errors,errors
+              print(json.dumps({'published_total':report['published']['total'],'corrected_total':views[0]['total'],'category_cards':len(views[0]['cards']),'search_cards':len(report['search']['cards']),'photo_loaded':report['first_photo_loaded'],'provider_sha256':report['tested_provider_sha256'],'site_modified':False},ensure_ascii=False))
+              browser.close()
+          PY
+      - name: Return isolated verification results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalog-refresh-v66-verification
+          retention-days: 3
+          path: verification
