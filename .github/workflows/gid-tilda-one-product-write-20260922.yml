@@ -142,9 +142,14 @@ jobs:
           _,file2=request('file',filename='offers0_1.xml',body=offers_xml)
           imp1,imp1safe=request('import',filename='import0_1.xml')
           imp2,imp2safe=request('import',filename='offers0_1.xml')
+          attempts=0
+          while imp2.strip().lower()=='progress' and attempts<12:
+              time.sleep(2)
+              imp2,imp2safe=request('import',filename='offers0_1.xml')
+              attempts+=1
           if 'success' not in imp1.lower() or 'success' not in imp2.lower():
-              Path('reports/result.json').write_text(json.dumps({'success':False,'init':init_safe,'import_product':imp1safe,'import_offer':imp2safe,'store_values_expected_unchanged':True},ensure_ascii=False,indent=2))
-              raise SystemExit('CommerceML import did not report success')
+              Path('reports/result.json').write_text(json.dumps({'success':False,'init':init_safe,'import_product':imp1safe,'import_offer':imp2safe,'offer_progress_polls':attempts,'store_values_expected_unchanged':True},ensure_ascii=False,indent=2))
+              raise SystemExit('CommerceML import did not finish successfully')
 
           time.sleep(4)
           after,total_after=public_product()
