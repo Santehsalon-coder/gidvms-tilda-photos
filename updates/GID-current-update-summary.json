@@ -1,0 +1,13 @@
+{
+  "generated_at_utc": "2026-09-22T17:08:14Z",
+  "feed_date": "2026-09-22 17:46",
+  "approved_targets": 471,
+  "catalogue_total": 1016,
+  "changed_products": 0,
+  "price_changes": 0,
+  "quantity_changes": 0,
+  "would_change_to_zero": 0,
+  "resulting_zero_stock": 51,
+  "safe": true,
+  "note": "CSV updates only existing approved GID cards. In Tilda map Title to Ignore."
+}
