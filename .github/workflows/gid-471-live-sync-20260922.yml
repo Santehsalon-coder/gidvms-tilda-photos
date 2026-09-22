@@ -1,0 +1,215 @@
+name: GID 471 guarded live sync
+on:
+  push:
+    paths: ['.github/workflows/gid-471-live-sync-20260922.yml']
+permissions:
+  contents: read
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Guarded price and stock update for exactly 471 GID cards
+        env:
+          TILDA_COMMERCEML_PASSWORD: ${{ secrets.TILDA_COMMERCEML_PASSWORD }}
+        run: |
+          mkdir -p reports
+          python - <<'PY'
+          import base64, hashlib, http.cookiejar, json, os, re, time, urllib.parse, urllib.request
+          import xml.etree.ElementTree as ET
+          from decimal import Decimal
+          from pathlib import Path
+          from xml.sax.saxutils import escape
+
+          FEED='https://gid.com.ru/e/share/yandex_turbo'
+          CAT='https://store.tildaapi.com/api/getproductslist/'
+          CONNECTOR='https://store.tilda.ru/connectors/commerceml/'
+          USER='25163343'
+          PASSWORD=os.environ.pop('TILDA_COMMERCEML_PASSWORD','')
+          PRICE_TYPE='cbcf493b-55bc-11d9-848a-00112f43529a'
+
+          def get(url, headers=None, limit=20000000):
+              h={'User-Agent':'GidVMS-live-sync/1.0','Cache-Control':'no-cache','Pragma':'no-cache'}
+              if headers: h.update(headers)
+              req=urllib.request.Request(url,headers=h)
+              with urllib.request.urlopen(req,timeout=45) as r:
+                  data=r.read(limit+1)
+              if len(data)>limit: raise RuntimeError('response too large')
+              return data
+
+          def read_catalogue():
+              token=str(time.time_ns()); products=[]; page=1; total=None
+              while True:
+                  q=urllib.parse.urlencode({'storepartuid':'724727657493','recid':'3742006901','size':'100','slice':str(page),'sort[created]':'desc','_gvs':token})
+                  data=json.loads(get(CAT+'?'+q))
+                  if total is None: total=int(data['total'])
+                  if int(data['total'])!=total: raise RuntimeError('catalogue changed during pagination')
+                  products.extend(data['products'])
+                  if len(products)>=total: break
+                  page+=1
+                  if page>100: raise RuntimeError('pagination limit')
+              if len(products)!=total or len({str(p.get('uid')) for p in products})!=total:
+                  raise RuntimeError('catalogue incomplete or duplicated')
+              return products,total
+
+          raw=get(FEED)
+          feed_sha=hashlib.sha256(raw).hexdigest()
+          clean=raw.replace(b'<!DOCTYPE yml_catalog SYSTEM "shops.dtd">',b'',1)
+          if b'<!DOCTYPE' in clean.upper() or b'<!ENTITY' in clean.upper():
+              raise RuntimeError('unexpected XML declarations')
+          root=ET.fromstring(clean)
+          offers=root.findall('./shop/offers/offer')
+          bysku={}; duplicate_supplier=[]
+          for o in offers:
+              sku=(o.findtext('vendorCode') or '').strip()
+              if not sku: continue
+              if sku in bysku: duplicate_supplier.append(sku)
+              bysku[sku]=o
+          if duplicate_supplier: raise RuntimeError('supplier duplicate SKUs')
+
+          products,total_before=read_catalogue()
+          targets=[]
+          for p in products:
+              sku=str(p.get('sku') or '').strip()
+              ext=str(p.get('externalid') or '').strip()
+              brand=str(p.get('brand') or '').strip().upper()
+              if brand=='GID' and sku and ext==f'GID-{sku}':
+                  targets.append(p)
+          if len(targets)!=471 or len({str(p.get('sku')) for p in targets})!=471:
+              raise RuntimeError(f'expected exactly 471 target cards, found {len(targets)}')
+
+          rows=[]; missing=[]; invalid=[]; zeroing=[]; big_price=[]; price_changes=[]; qty_changes=[]
+          for p in targets:
+              sku=str(p['sku']).strip(); o=bysku.get(sku)
+              if o is None:
+                  missing.append(sku); continue
+              try:
+                  sp=Decimal((o.findtext('price') or '').strip())
+                  tp=Decimal(str(p.get('price')))
+                  sq=int((o.findtext('count') or '').strip())
+                  tq=int(str(p.get('quantity')))
+              except Exception:
+                  invalid.append(sku); continue
+              available=o.get('available')
+              if sp<=0 or sp>Decimal('10000000') or sq<0 or sq>1000000 or ((available=='true')!=(sq>0)):
+                  invalid.append(sku); continue
+              pct=float((sp-tp)/tp*100) if tp>0 else None
+              row={'sku':sku,'uid':str(p.get('uid')),'external_id':str(p.get('externalid')),'title':str(p.get('title')),'before_price':str(tp),'after_price':str(sp),'before_quantity':tq,'after_quantity':sq}
+              rows.append(row)
+              if sp!=tp: price_changes.append(row)
+              if sq!=tq: qty_changes.append(row)
+              if tq>0 and sq==0: zeroing.append(row)
+              if pct is not None and abs(pct)>=20: big_price.append(row)
+          if missing or invalid:
+              raise RuntimeError(f'missing={len(missing)}, invalid={len(invalid)}')
+
+          resulting_zero=sum(1 for r in rows if r['after_quantity']==0)
+          flags=[]
+          if len(zeroing)>120: flags.append('too many in-stock cards would become zero')
+          if len(big_price)>80: flags.append('too many prices move by >=20%')
+          if len(price_changes)>400: flags.append('too many prices changed at once')
+          if resulting_zero>250: flags.append('too many target cards would be zero stock')
+          if flags: raise RuntimeError('safety flags: '+'; '.join(flags))
+
+          protected_keys=['title','descr','text','externalid','sku','brand','characteristics','gallery','url']
+          protected_before={str(p['uid']):{k:p.get(k) for k in protected_keys} for p in targets}
+          before_map={str(p['sku']):{'price':str(p.get('price')),'quantity':int(str(p.get('quantity')))} for p in targets}
+
+          if not PASSWORD or PASSWORD!=PASSWORD.strip() or '\n' in PASSWORD or '\r' in PASSWORD:
+              raise RuntimeError('secret missing or malformed')
+          auth='Basic '+base64.b64encode((USER+':'+PASSWORD).encode()).decode()
+          del PASSWORD
+          opener=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+
+          def request(mode, filename=None, body=None):
+              params={'type':'catalog','mode':mode}
+              if filename: params['filename']=filename
+              url=CONNECTOR+'?'+urllib.parse.urlencode(params)
+              headers={'User-Agent':'GidVMS-live-sync/1.0','Authorization':auth}
+              method='GET'; data=None
+              if body is not None:
+                  method='POST'; data=body; headers['Content-Type']='application/octet-stream'
+              req=urllib.request.Request(url,data=data,headers=headers,method=method)
+              with opener.open(req,timeout=60) as r:
+                  raw=r.read(262144)
+              return raw.decode('utf-8-sig',errors='replace').strip()
+
+          check=request('checkauth')
+          lines=check.splitlines()
+          if not lines or lines[0].strip().lower()!='success': raise RuntimeError('checkauth failed')
+          if len(lines)>=3 and re.fullmatch(r'[A-Za-z0-9_]+',lines[1].strip()):
+              opener.addheaders=[('Cookie',lines[1].strip()+'='+lines[2].strip())]
+          init=request('init')
+          if 'success' not in init.lower() and 'zip=' not in init.lower() and 'file_limit=' not in init.lower():
+              raise RuntimeError('init failed')
+
+          now=time.strftime('%Y-%m-%dT%H:%M:%S')
+          product_nodes=[]
+          offer_nodes=[]
+          for r in rows:
+              product_nodes.append(f"""<Товар><Ид>{escape(r['external_id'])}</Ид><Артикул>{escape(r['sku'])}</Артикул><Наименование>{escape(r['title'])}</Наименование></Товар>""")
+              offer_nodes.append(f"""<Предложение><Ид>{escape(r['external_id'])}</Ид><Артикул>{escape(r['sku'])}</Артикул><Наименование>{escape(r['title'])}</Наименование><Цены><Цена><Представление>{escape(r['after_price'])} RUB</Представление><ИдТипаЦены>{PRICE_TYPE}</ИдТипаЦены><ЦенаЗаЕдиницу>{escape(r['after_price'])}</ЦенаЗаЕдиницу><Валюта>RUB</Валюта><Единица>шт</Единица><Коэффициент>1</Коэффициент></Цена></Цены><Количество>{r['after_quantity']}</Количество></Предложение>""")
+          import_xml=(f"""<?xml version="1.0" encoding="UTF-8"?><КоммерческаяИнформация ВерсияСхемы="2.05" ДатаФормирования="{now}"><Каталог СодержитТолькоИзменения="true"><Ид>GID-VMS-471</Ид><Наименование>GID VMS 471</Наименование><Товары>{''.join(product_nodes)}</Товары></Каталог></КоммерческаяИнформация>""").encode('utf-8')
+          offers_xml=(f"""<?xml version="1.0" encoding="UTF-8"?><КоммерческаяИнформация ВерсияСхемы="2.05" ДатаФормирования="{now}"><ПакетПредложений СодержитТолькоИзменения="true"><Ид>GID-VMS-471-OFFERS</Ид><Наименование>GID VMS 471</Наименование><ИдКаталога>GID-VMS-471</ИдКаталога><ТипыЦен><ТипЦены><Ид>{PRICE_TYPE}</Ид><Наименование>Розничная цена</Наименование><Валюта>RUB</Валюта></ТипЦены></ТипыЦен><Предложения>{''.join(offer_nodes)}</Предложения></ПакетПредложений></КоммерческаяИнформация>""").encode('utf-8')
+
+          request('file','import471.xml',import_xml)
+          request('file','offers471.xml',offers_xml)
+          product_status=request('import','import471.xml')
+          if 'success' not in product_status.lower():
+              raise RuntimeError('product import did not report success')
+          offer_status=request('import','offers471.xml')
+          polls=0
+          while offer_status.strip().lower()=='progress' and polls<30:
+              time.sleep(2); offer_status=request('import','offers471.xml'); polls+=1
+          if 'success' not in offer_status.lower():
+              raise RuntimeError('offer import did not finish successfully')
+
+          # Poll public catalogue until intended values appear or timeout.
+          verified=False; after_products=None; total_after=None
+          for _ in range(15):
+              time.sleep(2)
+              after_products,total_after=read_catalogue()
+              after_targets=[p for p in after_products if str(p.get('brand') or '').strip().upper()=='GID' and str(p.get('externalid') or '').strip()==f"GID-{str(p.get('sku') or '').strip()}"]
+              if len(after_targets)!=471: continue
+              after_by_sku={str(p['sku']):p for p in after_targets}
+              ok=True
+              for r in rows:
+                  p=after_by_sku.get(r['sku'])
+                  if p is None or Decimal(str(p.get('price'))) != Decimal(r['after_price']) or int(str(p.get('quantity'))) != r['after_quantity']:
+                      ok=False; break
+              if ok:
+                  verified=True; break
+          if not verified:
+              raise RuntimeError('post-write values were not fully verified')
+
+          after_targets=[p for p in after_products if str(p.get('brand') or '').strip().upper()=='GID' and str(p.get('externalid') or '').strip()==f"GID-{str(p.get('sku') or '').strip()}"]
+          protected_after={str(p['uid']):{k:p.get(k) for k in protected_keys} for p in after_targets}
+          protected_unchanged=(protected_before==protected_after)
+          total_unchanged=(total_before==total_after)
+          if not protected_unchanged or not total_unchanged:
+              raise RuntimeError('protected fields or catalogue total changed unexpectedly')
+
+          after_by_sku={str(p['sku']):p for p in after_targets}
+          actually_changed_price=sum(1 for sku,b in before_map.items() if Decimal(str(after_by_sku[sku].get('price'))) != Decimal(b['price']))
+          actually_changed_qty=sum(1 for sku,b in before_map.items() if int(str(after_by_sku[sku].get('quantity'))) != b['quantity'])
+          report={
+              'success':True,'feed_date':root.get('date'),'feed_sha256':feed_sha,
+              'targets':471,'catalogue_total_before':total_before,'catalogue_total_after':total_after,
+              'requested_price_changes':len(price_changes),'requested_quantity_changes':len(qty_changes),
+              'applied_price_changes':actually_changed_price,'applied_quantity_changes':actually_changed_qty,
+              'protected_fields_unchanged':protected_unchanged,'new_products_created':total_after-total_before,
+              'would_change_to_zero':len(zeroing),'resulting_zero_stock':resulting_zero,
+              'offer_progress_polls':polls
+          }
+          Path('reports/summary.json').write_text(json.dumps(report,ensure_ascii=False,indent=2))
+          Path('reports/changes.json').write_text(json.dumps([r for r in rows if r in price_changes or r in qty_changes],ensure_ascii=False,indent=2))
+          print(json.dumps(report,ensure_ascii=False))
+          PY
+      - name: Save verification report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gid-471-live-sync-report
+          retention-days: 7
+          path: reports
+          if-no-files-found: ignore
