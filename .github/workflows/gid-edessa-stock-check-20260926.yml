@@ -1,0 +1,56 @@
+name: GID Edessa supplier stock check 20260926
+on:
+  push:
+    paths:
+      - '.github/workflows/gid-edessa-stock-check-20260926.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Read supplier only, no Tilda or MoySklad access
+        run: |
+          python - <<'PY'
+          import json
+          import urllib.request
+          import xml.etree.ElementTree as ET
+          from datetime import datetime, timezone
+          from decimal import Decimal
+          from zoneinfo import ZoneInfo
+          url = 'https://gid.com.ru/e/share/yandex_turbo'
+          req = urllib.request.Request(url, headers={'User-Agent': 'GidVMS-Edessa-readonly/1.0', 'Cache-Control': 'no-cache'})
+          with urllib.request.urlopen(req, timeout=40) as response:
+              data = response.read(20000001)
+          if len(data) > 20000000:
+              raise SystemExit('Supplier response too large')
+          clean = data.replace(b'<!DOCTYPE yml_catalog SYSTEM "shops.dtd">', b'', 1)
+          if b'<!DOCTYPE' in clean.upper() or b'<!ENTITY' in clean.upper():
+              raise SystemExit('Unexpected XML declarations')
+          root = ET.fromstring(clean)
+          if root.tag != 'yml_catalog':
+              raise SystemExit('Unexpected supplier format')
+          matches = [offer for offer in root.findall('./shop/offers/offer') if (offer.findtext('vendorCode') or '').strip() == 'L070BMGD']
+          if len(matches) != 1:
+              raise SystemExit('Sample SKU is missing or duplicated')
+          offer = matches[0]
+          quantity_text = (offer.findtext('count') or '').strip()
+          if not quantity_text.isascii() or not quantity_text.isdigit():
+              raise SystemExit('Invalid quantity')
+          quantity = int(quantity_text)
+          retail = Decimal((offer.findtext('price') or '').strip())
+          if quantity > 1000000 or not retail.is_finite() or retail <= 0:
+              raise SystemExit('Invalid supplier values')
+          if offer.get('available') not in ('true', 'false') or (offer.get('available') == 'true') != (quantity > 0):
+              raise SystemExit('Supplier stock and availability conflict')
+          now = datetime.now(timezone.utc)
+          feed_date = root.get('date') or ''
+          dated = datetime.strptime(feed_date, '%Y-%m-%d %H:%M').replace(tzinfo=ZoneInfo('Europe/Moscow'))
+          age_hours = (now - dated).total_seconds() / 3600
+          if age_hours < -0.25 or age_hours > 6:
+              raise SystemExit('Supplier feed is too old or in the future')
+          result = {'checked_at_utc': now.isoformat(), 'supplier_feed_date_moscow': feed_date, 'source': url, 'sku': 'L070BMGD', 'quantity': quantity, 'retail_price': str(retail), 'store_accessed': False, 'store_modified': False}
+          print('GID_EDESSA_CHECK=' + json.dumps(result, ensure_ascii=False))
+          PY
