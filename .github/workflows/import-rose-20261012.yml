@@ -1,0 +1,59 @@
+name: Prepare Rose product photographs 20261012
+on:
+  push:
+    paths:
+      - batches/rose-2026-10-12/manifest.json
+      - batches/rose-2026-10-12/prepare.py
+      - .github/workflows/import-rose-20261012.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: rose-2026-10-12-photos
+  cancel-in-progress: false
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          sparse-checkout: |
+            batches/rose-2026-10-12
+            photos/rose-2026-10-12
+      - name: Install image decoder
+        run: python -m pip install Pillow
+      - name: Download and verify lossless original photos
+        run: python batches/rose-2026-10-12/prepare.py
+      - name: Publish only Rose batch photos
+        id: publish
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add --sparse photos/rose-2026-10-12
+          if ! git diff --cached --quiet; then
+            git commit -m 'Publish pixel-verified Rose product photographs 20261012'
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
+          echo "photo_commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Verify every final commit-pinned photo URL
+        run: python batches/rose-2026-10-12/prepare.py --verify '${{ steps.publish.outputs.photo_commit }}'
+      - name: Save URL verification report
+        run: |
+          git add --sparse photos/rose-2026-10-12/verification.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'Record verified public Rose photo URLs 20261012'
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
+      - name: Return reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rose-20261012-reports
+          retention-days: 7
+          path: |
+            photos/rose-2026-10-12/report.json
+            photos/rose-2026-10-12/verification.json
