@@ -1,0 +1,7 @@
+{
+  "shard": 16,
+  "photo_commit": "1cea314d8fc88d62f7e26762239fa92537a93277",
+  "expected": 329,
+  "verified": 329,
+  "failures": []
+}
