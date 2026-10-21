@@ -1,0 +1,28 @@
+name: Probe Rose supplier image access
+on:
+  push:
+    paths:
+      - .github/workflows/rose-source-probe-20261021.yml
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Compare public source endpoints
+        run: |
+          python - <<'PY'
+          import urllib.request,urllib.parse,time
+          urls=["https://www.rs-msk.ru/aaaaaaaaaaaaa/photo-stock/Rose/Душевые гарнитуры/R109.jpg","https://rs-msk.ru/aaaaaaaaaaaaa/photo-stock/Rose/Душевые гарнитуры/R109.jpg","https://rose-sanitary.ru/upload/iblock/9bf/0nrf8eud2a91k7vn66zm0rj3zawnkr6c.jpg"]
+          for url in urls:
+              p=urllib.parse.urlsplit(url)
+              url=urllib.parse.urlunsplit((p.scheme,p.netloc,urllib.parse.quote(p.path,safe='/'),p.query,p.fragment))
+              at=time.time()
+              try:
+                  with urllib.request.urlopen(url,timeout=10) as r:
+                      data=r.read(3500000)
+                      print(p.netloc,r.status,len(data),round(time.time()-at,2),flush=True)
+              except Exception as e:
+                  print(p.netloc,type(e).__name__,str(e),round(time.time()-at,2),flush=True)
+          PY
