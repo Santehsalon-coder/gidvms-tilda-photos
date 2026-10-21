@@ -11,7 +11,7 @@ REPO='Santehsalon-coder/gidvms-tilda-photos'
 OLD_COMMIT='3ef7c9155589d894f96c6292bce83003a851ef8f'
 def encoded(url):
     p=urllib.parse.urlsplit(url)
-    assert p.scheme=='https' and p.netloc in ('rose-sanitary.ru','rs-msk.ru','static.tildacdn.com','raw.githubusercontent.com'),url
+    assert p.scheme=='https' and p.netloc in ('rose-sanitary.ru','rs-msk.ru','www.rs-msk.ru','static.tildacdn.com','raw.githubusercontent.com'),url
     return urllib.parse.urlunsplit((p.scheme,p.netloc,urllib.parse.quote(urllib.parse.unquote(p.path),safe='/'),p.query,p.fragment))
 def download(url):
     key=hashlib.sha256(url.encode()).hexdigest()

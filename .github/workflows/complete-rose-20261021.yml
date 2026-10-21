@@ -10,7 +10,7 @@ permissions:
   contents: write
 concurrency:
   group: rose-complete-2026-10-21-photos
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   prepare:
     runs-on: ubuntu-latest
