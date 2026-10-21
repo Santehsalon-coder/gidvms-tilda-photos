@@ -1,0 +1,186 @@
+{
+  "batch": "rose-details-2026-10-21",
+  "products": 20,
+  "images": [
+    {
+      "url": "https://rose-sanitary.ru/upload/iblock/ad4/h7ecevhf4vt1t6br5vvvppqcyiecrt79.jpg",
+      "sku": "R558Q",
+      "source_sha256": "86d8c19d36e6396b1c3d7322417c42979c2c6d28550813bbc79c81412f5b1064"
+    },
+    {
+      "url": "https://rose-sanitary.ru/upload/iblock/dd0/lsxp2p6td6afvrlavb10a0nkhs1enz6h.jpg",
+      "sku": "R358T",
+      "source_sha256": "0cbaaa6b6dfdcc700e0edfb8547bece96fe86eaf12c8e40099c33b0a671c4551"
+    },
+    {
+      "url": "https://rose-sanitary.ru/upload/iblock/246/o2zx7kj7v6gehqtwat4cf1w7yqx6u944.jpg",
+      "sku": "R358T",
+      "source_sha256": "6fad9736dbf719f18b2f4a837595248d580eb9e9b8aae849d9bb4a8df45c77a8"
+    },
+    {
+      "url": "https://rs-msk.ru/aaaaaaaaaaaaa/photo-stock/Rose/Смесители для кухни/R358T-интерьер12.jpg",
+      "sku": "R358T",
+      "source_sha256": "2a38f1210bc869fd79ee5194e8a0be306fd675a0aeb03817778bd285c072fe28"
+    },
+    {
+      "url": "https://rose-sanitary.ru/upload/iblock/37f/n4kyu1zx16wtqxomw50b54ezmlo24qgi.jpg",
+      "sku": "R2836C",
+      "source_sha256": "8b604e81706818781daadbd4cac3b5772beff071501eaf3a59b101ae0935d033"
+    },
+    {
+      "url": "https://rose-sanitary.ru/upload/iblock/15b/8p6gmyaxxhv4fqjbp0xqln8h3m1f50q1.jpg",
+      "sku": "R2836C",
+      "source_sha256": "d92d84854109336962f3c389a52c7e712964d95866a8df681a783a4c18f17c6a"
+    },
+    {
+      "url": "https://rose-sanitary.ru/upload/iblock/89a/z6npg7aizqesv2sm7m9fm5o71agm3c77.jpg",
+      "sku": "R213T",
+      "source_sha256": "08c56921fd135171b645c0e65dd2e6972043e9e4ee1a3513ce9644b66ff8861e"
+    },
+    {
+      "url": "https://rose-sanitary.ru/upload/iblock/50e/tj3pgvz7acmuhx9od7o3e8r55usd43g5.jpg",
+      "sku": "R213T",
+      "source_sha256": "8ed38443e24e08d148701f8a6dfe144bc3d66224054ec7455e9d254a9641beec"
+    },
+    {
+      "url": "https://rose-sanitary.ru/upload/iblock/a7b/lp3x8c0fvu1ctt30qmnxr57qz6ud55j1.jpg",
+      "sku": "R213T",
+      "source_sha256": "c0eefd85a3030f1efa7e775109b6c6ad2f5e8ea1cf9cc3eda8c648ca0b908414"
+    },
+    {
+      "url": "https://rose-sanitary.ru/upload/iblock/e74/mvw9pxos7wrf5s9r7zql5y9p2nnga5gt.jpg",
+      "sku": "R2835T",
+      "source_sha256": "1e0ee6c1f3b6e960862f7c97002ad1a23893f8f135b47d41ed24f55b3d9eb609"
+    },
+    {
+      "url": "https://rose-sanitary.ru/upload/iblock/127/zdane2rjow3tidmi4ey8ekdnnqi8rf12.jpg",
+      "sku": "R2835C",
+      "source_sha256": "512aad3c20a2e75af4b48c9eb2b58b5e529a9b51edb2c5b3f92e65c5b70dbc1e"
+    },
+    {
+      "url": "https://rose-sanitary.ru/upload/iblock/302/srgbd6yj09a7kywurh8xwhiam9cbp8wl.jpg",
+      "sku": "R2835C",
+      "source_sha256": "290c8223a404d4af86f2c836f25c45f875af429c4817fb1ed9d1e1041f088256"
+    },
+    {
+      "url": "https://rose-sanitary.ru/upload/iblock/190/yvir20w54wgbzcs6su5881122hoilnjf.jpg",
+      "sku": "R213L",
+      "source_sha256": "a0471d614cf3c8aa13b51fd0f5a2d1d7b9851b6e8791534bd7aa924c9294fdda"
+    },
+    {
+      "url": "https://rose-sanitary.ru/upload/iblock/84b/8op2y6ng5zellg5roh40sudgqpyrysnn.jpg",
+      "sku": "R213L",
+      "source_sha256": "69428ab69ece7f68e0b56e2ae7c93f49590630a0e5e35c98f7a825dc7d704a7b"
+    },
+    {
+      "url": "https://rose-sanitary.ru/upload/iblock/7a6/pd1z1zgt6cp9i29uhz4pcdqq1isfftiw.jpg",
+      "sku": "R213L",
+      "source_sha256": "f5983aa4ebf0d27d40198b28ae590139d37809be3a3da7fb383ce2a8ce20b2b0"
+    },
+    {
+      "url": "https://rose-sanitary.ru/upload/iblock/7c8/78ip4wf0dmkfup6zplgvy80jvd28of86.jpg",
+      "sku": "R213C",
+      "source_sha256": "df747b639fdd87a0ba7fb46877ebdafafaa99f1cc5a980b704b0778768eebd1f"
+    },
+    {
+      "url": "https://rose-sanitary.ru/upload/iblock/bc8/8likjou3jp7eslw2r5o1eoaaqujf3d07.jpg",
+      "sku": "R213C",
+      "source_sha256": "530d5a28865041fa50fb5c7305aca47293a16a5329cb51b467c31554331b5c2b"
+    },
+    {
+      "url": "https://rose-sanitary.ru/upload/iblock/314/0zkpz40dtdr69djzcjnfay4ezxc21usa.jpg",
+      "sku": "R213C",
+      "source_sha256": "ada9b925f31e780146dad19febdc664e1627fcce789fc4254066818718d122db"
+    },
+    {
+      "url": "https://rose-sanitary.ru/upload/iblock/67e/gb45xlv3hkh50wxo2amhlgxx5jm5xsbh.jpg",
+      "sku": "R213C",
+      "source_sha256": "147e910e0d62db065c4e9c7e15798c35736f7f38bb66fa1f6ddcd4dda3cea7b1"
+    },
+    {
+      "url": "https://rose-sanitary.ru/upload/iblock/12b/c9of4eqjop0cv5oj50w11mlok2emh65u.jpg",
+      "sku": "R213C",
+      "source_sha256": "71d3e0018e457efed15448bb80ec57792e465d2222e3b345ac23bf84e051c433"
+    },
+    {
+      "url": "https://rs-msk.ru/aaaaaaaaaaaaa/photo-stock/Rose/Смесители для ванны/R1002T-интерьер15.jpg",
+      "sku": "R1002T",
+      "source_sha256": "e029972212aa8e140b491946371383818ed1bb7c7ad46f962d65b7daae495c6e"
+    },
+    {
+      "url": "https://rose-sanitary.ru/upload/iblock/aa8/yd6u3qxnd15sbgt1ovwuyxf8of8v19ki.jpg",
+      "sku": "R2836",
+      "source_sha256": "285deeb3c0586bc2fdf72f64e0cda216325804d66d2baee9345d079561b55c3c"
+    },
+    {
+      "url": "https://rose-sanitary.ru/upload/iblock/eaa/b5oxtpx3xshyy19s5s21iafqy4brjkf1.jpg",
+      "sku": "R213H",
+      "source_sha256": "5d44cf09187f16a9857eb61f71a24c606447db61e64d605d941906136c46552d"
+    },
+    {
+      "url": "https://rose-sanitary.ru/upload/iblock/548/eiafc501jw5dpnc48cr30er0yr9j0mg5.jpg",
+      "sku": "R2835",
+      "source_sha256": "1f9dcb173e448147c1f489f8a7dc67510f94e006e42b68cf29dd478a0a058005"
+    },
+    {
+      "url": "https://rose-sanitary.ru/upload/iblock/c63/lnjbs40aotqn48wbbtptcv908rbggkwe.jpg",
+      "sku": "R213G",
+      "source_sha256": "824f301286d3b2bcded4d071adcbaadd7baadae6fde972f1ad32941629dfc66f"
+    },
+    {
+      "url": "https://rose-sanitary.ru/upload/iblock/c86/2cff55o4igusnw7nfhy67gt7gru0n52b.jpg",
+      "sku": "R213G",
+      "source_sha256": "02955635502e75d354bd5ce8557dfd073a51ab3b81b9ec337e3f2a694cdda6a1"
+    },
+    {
+      "url": "https://rose-sanitary.ru/upload/iblock/8d5/h2roa2jd6ep9zi2cm3w4i6136f6o0p0u.jpg",
+      "sku": "R213G",
+      "source_sha256": "98ee4e1dcdc3b6bf63a9393afa02f0ccc325b97231f1ca1e3d4fde2c5629ad99"
+    },
+    {
+      "url": "https://rose-sanitary.ru/upload/iblock/49c/y574suz5sgmqgr9vf4j0hve5z26mh2bo.jpg",
+      "sku": "R858C",
+      "source_sha256": "e6034c683141f2428d4ad7feddfeba133372468946564e42737c7438874382b7"
+    },
+    {
+      "url": "https://rose-sanitary.ru/upload/iblock/483/44b7kmf2269ch69b3z7s3p991ql70szk.jpg",
+      "sku": "R858C",
+      "source_sha256": "51426258584efeef65cdbb4ab7322112b0eefa7386f4b5ca9b27a3adddac068a"
+    },
+    {
+      "url": "https://rose-sanitary.ru/upload/iblock/3ec/ks51y0fm8cgkjgffuusqo2cm0zemzsxn.jpg",
+      "sku": "R213",
+      "source_sha256": "f549706ad1888d98bcdc4c9bce2ece26d0aedf4f5c2cacc1bf1b27c428d26017"
+    },
+    {
+      "url": "https://rose-sanitary.ru/upload/iblock/490/gyc3nney399cmu7idzly1jpk6ltlh8vc.jpg",
+      "sku": "R2802C",
+      "source_sha256": "3bdb2d645df1d0b891bdf6044cb7557f7e4255c1b83b4706de793aa5e2957dbc"
+    },
+    {
+      "url": "https://rs-msk.ru/aaaaaaaaaaaaa/photo-stock/Rose/Смесители для ванны/R2802C-интерьер10.jpg",
+      "sku": "R2802C",
+      "source_sha256": "d8329049894325549b04ceeb80a02fee0f971c3c4a8c897150707f768dd95c02"
+    },
+    {
+      "url": "https://rose-sanitary.ru/upload/iblock/683/lnd25asxgdhvw1vr2b3tma5ahhhowt6z.jpg",
+      "sku": "R858H",
+      "source_sha256": "e77da82daa6db4dfd0fbfd4aa0f975af1fc0cda00dde87b699b780d26c8b8757"
+    },
+    {
+      "url": "https://rose-sanitary.ru/upload/resize_cache/iblock/fef/1920_1920_1/mc1ykv78oxuh069333l76axkix1ijtnz.jpg",
+      "sku": "RG1119Q",
+      "source_sha256": "b70a84a83e1fba203882d9b862a17ded81d7010dc693406d8e429395074979fe"
+    },
+    {
+      "url": "https://rose-sanitary.ru/upload/resize_cache/iblock/214/1920_1920_1/5vo2j0bxgy3r1h5vatkqgirn2pt1dgad.jpg",
+      "sku": "RG1127Q",
+      "source_sha256": "8287dc9e530d27808c66369b04a64e3fbdc83217f715432f883d15f61afc8f0f"
+    },
+    {
+      "url": "https://rose-sanitary.ru/upload/resize_cache/iblock/eea/1920_1920_1/em0dg103as3hgqt6p06ywd5qy65r13xg.jpg",
+      "sku": "RG1019Q",
+      "source_sha256": "fde816201103a242352e957088737bfa814952873f6539394a041807e087aea3"
+    }
+  ]
+}
