@@ -1,0 +1,35 @@
+name: Publish reviewed GraniStone palette 384
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/palette-granistone384.yml'
+      - 'palettes/granistone-20261023-v384/build-request.json'
+permissions:
+  contents: write
+concurrency:
+  group: palette-granistone384
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          sparse-checkout: palettes/granistone-20261023-v384
+      - name: Install the verified image encoder
+        run: python -m pip install -q Pillow==12.3.0
+      - name: Reproduce reviewed images and verify every output hash
+        run: python palettes/granistone-20261023-v384/build.py
+      - name: Publish this new palette batch only
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add --sparse palettes/granistone-20261023-v384/images palettes/granistone-20261023-v384/build-report.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'Publish 545 verified GraniStone shades and palette series images'
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
