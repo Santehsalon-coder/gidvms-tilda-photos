@@ -7,7 +7,11 @@ def sha(data):return hashlib.sha256(data).hexdigest()
 def put_image(im,path,expected):
  data=io.BytesIO();im.save(data,format='WEBP',lossless=True,method=6);data=data.getvalue()
  assert sha(data)==expected,('Encoded output differs from reviewed file',path)
- check=Image.open(io.BytesIO(data)).convert(im.mode);assert check.tobytes()==im.tobytes(),path
+ check=Image.open(io.BytesIO(data))
+ if im.mode=='RGB':assert check.convert('RGB').tobytes()==im.tobytes(),path
+ else:
+  white=Image.new('RGBA',im.size,'white')
+  assert Image.alpha_composite(white,check.convert('RGBA')).tobytes()==Image.alpha_composite(white,im.convert('RGBA')).tobytes(),path
  f=ROOT/path;f.parent.mkdir(parents=True,exist_ok=True);f.write_bytes(data)
  return {'path':path,'sha256':sha(data),'bytes':len(data),'size':list(im.size)}
 def fetch(url,expected):

@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/palette-granistone384.yml'
       - 'palettes/granistone-20261023-v384/build-request.json'
+      - 'palettes/granistone-20261023-v384/build.py'
 permissions:
   contents: write
 concurrency:
