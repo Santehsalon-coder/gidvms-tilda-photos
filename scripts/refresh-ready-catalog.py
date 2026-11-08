@@ -33,11 +33,21 @@ def collect(part):
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         pages=[first,*pool.map(lambda i:page(part,i),range(2,count+1))]
     items=validate(part,pages)
-    raw=json.dumps(dict(schema=536,part=part,at=int(time.time()*1000),total=len(items),items=items),ensure_ascii=False,separators=(',',':')).encode()
-    compressor=zlib.compressobj(9,zlib.DEFLATED,-15)
-    packed=compressor.compress(raw)+compressor.flush()
-    envelope=dict(encoding='deflate-raw-base64',size=len(raw),data=base64.b64encode(packed).decode())
-    return part,json.dumps(envelope,separators=(',',':')),len(items)
+    return part,pack(part,items,int(time.time()*1000)),len(items)
+
+def pack(part,items,stamp):
+    chunks=[];batch=[];size=2
+    def emit(rows):
+        raw=('['+','.join(rows)+']').encode()
+        packed=zlib.compress(raw,9)[2:-4]
+        chunks.append(dict(size=len(raw),data=base64.b64encode(packed).decode()))
+    for product in items:
+        text=json.dumps(product,ensure_ascii=False,separators=(',',':'));length=len(text.encode())+1
+        if length>2_000_000: raise ValueError('Product exceeds bounded decoder size')
+        if size+length>2_000_000 and batch:emit(batch);batch=[];size=2
+        batch.append(text);size+=length
+    if batch or not chunks:emit(batch)
+    return json.dumps(dict(schema=536,encoding='deflate-raw-base64-chunks',part=part,at=stamp,total=len(items),chunks=chunks),separators=(',',':'))
 
 def build(output):
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
