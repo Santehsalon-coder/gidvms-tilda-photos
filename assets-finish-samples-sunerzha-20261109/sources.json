@@ -1,0 +1,87 @@
+{
+  "sourcePages": [
+    "https://sunerzha.com/inspire/color/frame.php",
+    "https://shop.sunerzha.com/catalog/kollektsii/water_1/dr_bogema_pryamaya_600kh500/?oid=3901"
+  ],
+  "downloadedAt": "2026-11-09",
+  "rule": "Only fill missing samples; preserve all existing samples.",
+  "samples": [
+    {
+      "key": "Без покрытия",
+      "url": "https://sunerzha.com/inspire/color/images/firm/00.png",
+      "file": "firm-00.png",
+      "bytes": 5611,
+      "sha256": "a809079c2f34cf014f30c2c22e1db9d39f58b05722dfa0a6772a790bfb0fd7bb"
+    },
+    {
+      "key": "gold-gloss",
+      "url": "https://sunerzha.com/inspire/color/images/firm/03.png",
+      "file": "firm-03.png",
+      "bytes": 5956,
+      "sha256": "0b3e5d2124b62aa5afe48c9f51f32b0cbcc97154f7449930f47741106bcdbe88"
+    },
+    {
+      "key": "gold-silk",
+      "url": "https://sunerzha.com/inspire/color/images/firm/32.png",
+      "file": "firm-32.png",
+      "bytes": 5470,
+      "sha256": "1c61a4913ea8141e6f413809294b8181af152ea6fb42618d825ccf526c55458d"
+    },
+    {
+      "key": "Состаренная латунь",
+      "url": "https://sunerzha.com/inspire/color/images/firm/051.png",
+      "file": "firm-051.png",
+      "bytes": 5523,
+      "sha256": "ab15f12ec33847fd5cace0353fd78a9eee9b2101be88c496d45fb6f53d89c524"
+    },
+    {
+      "key": "Тёмный титан муар",
+      "url": "https://sunerzha.com/inspire/color/images/firm/15.png",
+      "file": "firm-15.png",
+      "bytes": 5078,
+      "sha256": "e96198900d20c644fbcd7ed30d4cf11c1cc97ea1c12b7fcbda6dc45d8a359981"
+    },
+    {
+      "key": "Шампань",
+      "url": "https://sunerzha.com/inspire/color/images/firm/020.png",
+      "file": "firm-020.png",
+      "bytes": 5938,
+      "sha256": "18301706a382cb0141f9ab3e338eabaa00d0c9fd5168d05656d4d4a7fb637e6b"
+    },
+    {
+      "key": "RAL 1001 Бежевый",
+      "url": "https://sunerzha.com/inspire/color/images/ral/RAL_1001.png",
+      "file": "ral-RAL_1001.png",
+      "bytes": 4399,
+      "sha256": "6e744b5bebf55033f77d5cf07a82276e9f55749a231d5aec35d218743b2ffc2c"
+    },
+    {
+      "key": "RAL 1017 Шафраново-жёлтый",
+      "url": "https://sunerzha.com/inspire/color/images/ral/RAL_1017.png",
+      "file": "ral-RAL_1017.png",
+      "bytes": 4597,
+      "sha256": "bf6d6b4560e587e1f74534f249980ed4241d80175527256fe735d37da28cca1a"
+    },
+    {
+      "key": "RAL 3015 Светло-розовый",
+      "url": "https://sunerzha.com/inspire/color/images/ral/RAL_3015.png",
+      "file": "ral-RAL_3015.png",
+      "bytes": 4308,
+      "sha256": "57e7f44aab0598f657d76cd070623c0df2e7e853be83b08ed835457c632c8e87"
+    },
+    {
+      "key": "RAL 2000 Жёлто-оранжевый",
+      "url": "https://sunerzha.com/inspire/color/images/ral/RAL_2000.png",
+      "file": "ral-RAL_2000.png",
+      "bytes": 4984,
+      "sha256": "658f03a5519f29d6def08bd87ec3fb2e6bf86be5c2d80a315452e9bd1dad9c42"
+    },
+    {
+      "key": "Матовая шампань",
+      "url": "https://shop.sunerzha.com/upload/uf/6e8/ils0kq1vg63macvm5zjth1lfrluac2qy.png",
+      "file": "firm-022.png",
+      "bytes": 5288,
+      "sha256": "3361208bc0c6b10c80d60894ab8ce76ee76a515e6d4ce2cec29b41c2255d7f36"
+    }
+  ]
+}
