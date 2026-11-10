@@ -1,0 +1,60 @@
+name: Prepare 1533 electric Sunerzha product galleries
+on:
+  push:
+    branches: [assets/sunerzha-electric-2026-11-10]
+    paths:
+      - batches/sunerzha-electric-1533-2026-11-10/**
+      - .github/workflows/import-sunerzha-electric-1533.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: sunerzha-electric-1533-photos
+  cancel-in-progress: false
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: assets/sunerzha-electric-2026-11-10
+          fetch-depth: 1
+      - name: Install image decoder
+        run: python -m pip install Pillow
+      - name: Download exact product photographs
+        run: python batches/sunerzha-electric-1533-2026-11-10/prepare.py
+      - name: Publish only this photo batch to the isolated asset branch
+        id: publish
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add photos/sunerzha-electric-1533-2026-11-10
+          if ! git diff --cached --quiet; then
+            git commit -m 'Publish exact Sunerzha photos for 1533 electric products'
+            git pull --rebase origin assets/sunerzha-electric-2026-11-10
+            git push origin HEAD:assets/sunerzha-electric-2026-11-10
+          fi
+          echo "photo_commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Verify every public photo URL
+        run: python batches/sunerzha-electric-1533-2026-11-10/prepare.py --verify '${{ steps.publish.outputs.photo_commit }}'
+      - name: Publish verification report
+        if: always()
+        run: |
+          if test -f photos/sunerzha-electric-1533-2026-11-10/verification.json; then
+            git add photos/sunerzha-electric-1533-2026-11-10/verification.json
+            if ! git diff --cached --quiet; then
+              git commit -m 'Record Sunerzha public photo verification'
+              git pull --rebase origin assets/sunerzha-electric-2026-11-10
+              git push origin HEAD:assets/sunerzha-electric-2026-11-10
+            fi
+          fi
+      - name: Save reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sunerzha-electric-1533-photo-reports
+          retention-days: 7
+          path: |
+            photos/sunerzha-electric-1533-2026-11-10/report.json
+            photos/sunerzha-electric-1533-2026-11-10/verification.json
