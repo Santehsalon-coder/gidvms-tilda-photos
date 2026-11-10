@@ -1,1 +1,84 @@
-{"schema":1,"revision":"2026-11-09-sunerzha-722-missing-samples","brands":[{"key":"ceramicanova","aliases":["Ceramicanova","Ceramica Nova","Керамика Нова"],"path":"catalog/multi-v1/ceramicanova-bc04a7ba42e93029.json","sha256":"bc04a7ba42e930294cee0d4214b696b28706d4c60762ff6673be8ad5889312eb","products":623,"families":249,"adoptFamilies":["ceramicanova-element-round-358x358x155"]},{"key":"sunerzha","aliases":["Сунержа","Sunerzha"],"path":"catalog/multi-v1/sunerzha-85cfe7e83596f551.json","sha256":"85cfe7e83596f5515d6a3be536c073b61232fc5487d8747884cd2e897df1b0fa","products":722,"families":13,"presentation":{"separateColorKeys":["Без покрытия","white-matte","black-matte","gold-silk","Тёмный титан муар","gold-gloss","Состаренная латунь","satin","Шампань","Состаренная бронза","RAL 1001 Бежевый","RAL 1017 Шафраново-жёлтый","RAL 3015 Светло-розовый","white","RAL 2000 Жёлто-оранжевый","Матовая шампань","gold-matte"],"fallbackColorSamples":{"Без покрытия":"https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/d1ea49dab3aa49ccd4c3a2c1c6f16aa0d9d8f016/assets-finish-samples-sunerzha-20261109/firm-00.png","gold-gloss":"https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/d1ea49dab3aa49ccd4c3a2c1c6f16aa0d9d8f016/assets-finish-samples-sunerzha-20261109/firm-03.png","gold-silk":"https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/d1ea49dab3aa49ccd4c3a2c1c6f16aa0d9d8f016/assets-finish-samples-sunerzha-20261109/firm-32.png","Состаренная латунь":"https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/d1ea49dab3aa49ccd4c3a2c1c6f16aa0d9d8f016/assets-finish-samples-sunerzha-20261109/firm-051.png","Тёмный титан муар":"https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/d1ea49dab3aa49ccd4c3a2c1c6f16aa0d9d8f016/assets-finish-samples-sunerzha-20261109/firm-15.png","Шампань":"https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/d1ea49dab3aa49ccd4c3a2c1c6f16aa0d9d8f016/assets-finish-samples-sunerzha-20261109/firm-020.png","RAL 1001 Бежевый":"https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/d1ea49dab3aa49ccd4c3a2c1c6f16aa0d9d8f016/assets-finish-samples-sunerzha-20261109/ral-RAL_1001.png","RAL 1017 Шафраново-жёлтый":"https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/d1ea49dab3aa49ccd4c3a2c1c6f16aa0d9d8f016/assets-finish-samples-sunerzha-20261109/ral-RAL_1017.png","RAL 3015 Светло-розовый":"https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/d1ea49dab3aa49ccd4c3a2c1c6f16aa0d9d8f016/assets-finish-samples-sunerzha-20261109/ral-RAL_3015.png","RAL 2000 Жёлто-оранжевый":"https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/d1ea49dab3aa49ccd4c3a2c1c6f16aa0d9d8f016/assets-finish-samples-sunerzha-20261109/ral-RAL_2000.png","Матовая шампань":"https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/d1ea49dab3aa49ccd4c3a2c1c6f16aa0d9d8f016/assets-finish-samples-sunerzha-20261109/firm-022.png"}}}]}
+{
+  "schema": 1,
+  "revision": "2026-11-10-sunerzha-2255-electric-1533",
+  "brands": [
+    {
+      "key": "ceramicanova",
+      "aliases": [
+        "Ceramicanova",
+        "Ceramica Nova",
+        "Керамика Нова"
+      ],
+      "path": "catalog/multi-v1/ceramicanova-bc04a7ba42e93029.json",
+      "sha256": "bc04a7ba42e930294cee0d4214b696b28706d4c60762ff6673be8ad5889312eb",
+      "products": 623,
+      "families": 249,
+      "adoptFamilies": [
+        "ceramicanova-element-round-358x358x155"
+      ]
+    },
+    {
+      "key": "sunerzha",
+      "aliases": [
+        "Сунержа",
+        "Sunerzha"
+      ],
+      "path": "catalog/multi-v1/sunerzha-084eaac336d0f6dd.json",
+      "sha256": "084eaac336d0f6ddb6ab7b175166013e220c67e0e66c06e806f95fdc782e978a",
+      "products": 2255,
+      "families": 47,
+      "presentation": {
+        "separateColorKeys": [
+          "Без покрытия",
+          "white-matte",
+          "black-matte",
+          "gold-silk",
+          "Тёмный титан муар",
+          "gold-gloss",
+          "Состаренная латунь",
+          "satin",
+          "Шампань",
+          "Состаренная бронза",
+          "RAL 1001 Бежевый",
+          "RAL 1017 Шафраново-жёлтый",
+          "RAL 3015 Светло-розовый",
+          "white",
+          "RAL 2000 Жёлто-оранжевый",
+          "Матовая шампань",
+          "gold-matte",
+          "RAL 9004 Сигнальный чёрный",
+          "RAL 1021 Рапсово-жёлтый",
+          "Брашированная сталь",
+          "Брашированная шампань",
+          "Брашированное золото",
+          "Стальной графит",
+          "RAL 1018 Цинково-жёлтый",
+          "RAL 7039 Кварцевый серый",
+          "RAL 3020 Транспортный красный"
+        ],
+        "fallbackColorSamples": {
+          "Без покрытия": "https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/d1ea49dab3aa49ccd4c3a2c1c6f16aa0d9d8f016/assets-finish-samples-sunerzha-20261109/firm-00.png",
+          "gold-gloss": "https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/d1ea49dab3aa49ccd4c3a2c1c6f16aa0d9d8f016/assets-finish-samples-sunerzha-20261109/firm-03.png",
+          "gold-silk": "https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/d1ea49dab3aa49ccd4c3a2c1c6f16aa0d9d8f016/assets-finish-samples-sunerzha-20261109/firm-32.png",
+          "Состаренная латунь": "https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/d1ea49dab3aa49ccd4c3a2c1c6f16aa0d9d8f016/assets-finish-samples-sunerzha-20261109/firm-051.png",
+          "Тёмный титан муар": "https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/d1ea49dab3aa49ccd4c3a2c1c6f16aa0d9d8f016/assets-finish-samples-sunerzha-20261109/firm-15.png",
+          "Шампань": "https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/d1ea49dab3aa49ccd4c3a2c1c6f16aa0d9d8f016/assets-finish-samples-sunerzha-20261109/firm-020.png",
+          "RAL 1001 Бежевый": "https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/d1ea49dab3aa49ccd4c3a2c1c6f16aa0d9d8f016/assets-finish-samples-sunerzha-20261109/ral-RAL_1001.png",
+          "RAL 1017 Шафраново-жёлтый": "https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/d1ea49dab3aa49ccd4c3a2c1c6f16aa0d9d8f016/assets-finish-samples-sunerzha-20261109/ral-RAL_1017.png",
+          "RAL 3015 Светло-розовый": "https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/d1ea49dab3aa49ccd4c3a2c1c6f16aa0d9d8f016/assets-finish-samples-sunerzha-20261109/ral-RAL_3015.png",
+          "RAL 2000 Жёлто-оранжевый": "https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/d1ea49dab3aa49ccd4c3a2c1c6f16aa0d9d8f016/assets-finish-samples-sunerzha-20261109/ral-RAL_2000.png",
+          "Матовая шампань": "https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/d1ea49dab3aa49ccd4c3a2c1c6f16aa0d9d8f016/assets-finish-samples-sunerzha-20261109/firm-022.png",
+          "Брашированная сталь": "https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/main/assets-finish-samples-sunerzha-20261110/firm-001.png",
+          "Брашированная шампань": "https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/main/assets-finish-samples-sunerzha-20261110/firm-023.png",
+          "Брашированное золото": "https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/main/assets-finish-samples-sunerzha-20261110/firm-033.png",
+          "Стальной графит": "https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/main/assets-finish-samples-sunerzha-20261110/firm-072.png",
+          "RAL 1018 Цинково-жёлтый": "https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/main/assets-finish-samples-sunerzha-20261110/ral-RAL_1018.png",
+          "RAL 1021 Рапсово-жёлтый": "https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/main/assets-finish-samples-sunerzha-20261110/ral-RAL_1021.png",
+          "RAL 3020 Транспортный красный": "https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/main/assets-finish-samples-sunerzha-20261110/ral-RAL_3020.png",
+          "RAL 7039 Кварцевый серый": "https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/main/assets-finish-samples-sunerzha-20261110/ral-RAL_7039.png",
+          "RAL 9004 Сигнальный чёрный": "https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/main/assets-finish-samples-sunerzha-20261110/ral-RAL_9004.png"
+        }
+      }
+    }
+  ]
+}
