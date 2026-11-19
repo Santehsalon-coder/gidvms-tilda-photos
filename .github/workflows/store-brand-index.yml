@@ -5,6 +5,13 @@ on:
     types: [completed]
     branches: [main]
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/store-brand-index.yml'
+      - 'scripts/store-brand-extras.py'
+      - 'scripts/store-brand-membership.cjs'
+      - 'scripts/build-store-brand.cjs'
 permissions:
   contents: write
 concurrency:
@@ -12,7 +19,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   update:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
