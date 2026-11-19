@@ -48,6 +48,10 @@ if (process.argv[3]) {
     products.set(id, {product, parts});
   }
 }
+const { brandDirectoryIndex } = require('./brand-directory-index.cjs');
+const directoryIndex = brandDirectoryIndex(products, generation);
+atomicWrite('brand-directory.json', JSON.stringify(directoryIndex) + '\n');
+
 const categories = {bath: [], furniture: [], mirrors: [], kits: []};
 const keys = new Map([['Ванны','bath'],['Мебель для ванной','furniture'],['Зеркала с подсветкой','mirrors'],['Инсталляции с унитазом','kits']]);
 const own = [], byInstallation = Object.create(null), chunks = [];
