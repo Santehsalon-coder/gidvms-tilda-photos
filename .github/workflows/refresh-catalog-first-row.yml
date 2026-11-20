@@ -51,7 +51,7 @@ jobs:
           set -euo pipefail
           python3 -m venv "$RUNNER_TEMP/first-row-env"
           source "$RUNNER_TEMP/first-row-env/bin/activate"
-          python -m pip install --disable-pip-version-check 'playwright==1.62.0'
+          python -m pip install --disable-pip-version-check 'playwright==1.62.0' 'Pillow==13.0.0'
           echo "$RUNNER_TEMP/first-row-env/bin" >> "$GITHUB_PATH"
           if chrome=$(command -v google-chrome); then
             echo "STOREFRONT_BROWSER=$chrome" >> "$GITHUB_ENV"
@@ -69,6 +69,8 @@ jobs:
           import base64
           import json
           import os
+          from http.client import HTTPException
+          from io import BytesIO
           import re
           import sys
           import tempfile
@@ -79,11 +81,13 @@ jobs:
           from urllib.parse import parse_qs, urlsplit
           from urllib.request import Request, urlopen
 
+          from PIL import Image, ImageOps
           from playwright.async_api import async_playwright
 
           ORIGIN = "https://gidvms.ru"
           READY = "https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/main/catalog/ready536/"
           BATH, FURNITURE, MIXERS, INSTALLATIONS = "338629674673", "872810302623", "389742041783", "422452689173"
+          SHOWER_SUBCATEGORY = "/?gc=smesiteli-i-dush&gs=dushevye-sistemy"
           ROUTES = {
               "/?gc=mebel-dlya-vannoy": FURNITURE,
               "/?gc=vanny&gs=iz-iskusstvennogo-kamnya": BATH,
@@ -91,6 +95,7 @@ jobs:
               "/?gc=vanny&gs=uglovye": BATH,
               "/?gc=vanny": BATH,
               "/?gc=smesiteli-i-dush": MIXERS,
+              SHOWER_SUBCATEGORY: MIXERS,
               "/?gc=zerkalnye-shkafy": "496159877623",
               "/?gc=polotentsesushiteli": "267674723263",
               "/?gc=installyatsii-i-unitazy&gs=installyatsii": INSTALLATIONS,
@@ -244,6 +249,39 @@ jobs:
                       raise ValueError(f"Untrusted native photo for {uid}")
               return first
 
+          def preview_bytes(raw):
+              with Image.open(BytesIO(raw)) as source:
+                  if source.format not in {"JPEG","PNG","WEBP"} or source.width*source.height > 24_000_000:
+                      raise ValueError("Unsupported preview source")
+                  image = ImageOps.exif_transpose(source)
+                  image.thumbnail((240,240), Image.Resampling.LANCZOS)
+                  if image.mode not in {"RGB","RGBA"}:
+                      image = image.convert("RGBA" if "transparency" in image.info else "RGB")
+                  buffer = BytesIO()
+                  image.save(buffer, "WEBP", quality=76, method=5)
+              data = buffer.getvalue()
+              if len(data) > 9_000:
+                  raise ValueError("Preview exceeded the byte budget")
+              return "data:image/webp;base64," + base64.b64encode(data).decode("ascii")
+
+          def preview_for(card):
+              url = card["photo"]
+              with urlopen(Request(url, headers={"User-Agent":"GID-Storefront-Snapshot/1.0"}), timeout=12) as response:
+                  if response.geturl() != url:
+                      raise ValueError("Preview photo changed address")
+                  raw = response.read(4_000_001)
+              if len(raw) > 4_000_000:
+                  raise ValueError("Preview source exceeded the byte budget")
+              return preview_bytes(raw)
+
+          async def add_previews(page):
+              async def one(card):
+                  try:
+                      card["preview"] = await asyncio.to_thread(preview_for, card)
+                  except (HTTPException, OSError, ValueError, SyntaxError, Image.DecompressionBombError) as exc:
+                      print("Optional image unavailable",card["uid"],str(exc),file=sys.stderr,flush=True)
+              await asyncio.gather(*(one(card) for card in page["cards"][:2]))
+
           def write_json(path,data):
               path.parent.mkdir(parents=True,exist_ok=True)
               with tempfile.NamedTemporaryFile(dir=path.parent,mode="w",encoding="utf8",delete=False) as tmp:
@@ -277,6 +315,8 @@ jobs:
                               pages=await asyncio.gather(*(render(route,w) for w in WIDTHS))
                               stamp,products=bypart[part]
                               page=verify(route,pages,products)
+                              if route == SHOWER_SUBCATEGORY:
+                                  await add_previews(page)
                               output["pages"][route]={"part":part,"sourceAt":stamp,**page}
                               print(route,page["total"],[r["uid"] for r in page["cards"]],flush=True)
                           except Exception as exc:
@@ -284,14 +324,16 @@ jobs:
                       await asyncio.gather(*(one(r,p) for r,p in ROUTES.items()))
                   finally:
                       await browser.close()
+              shower = output["pages"].pop(SHOWER_SUBCATEGORY, None)
               if not output["pages"]:raise ValueError("No verified first rows in this generation")
-              write_json(args.output,output)
+              shower_rows = {**output, "pages": {SHOWER_SUBCATEGORY: shower} if shower else {}}
+              write_json(args.output, {"first-row.json":output,"shower-row-previews.json":shower_rows})
 
           if __name__ == "__main__":
               import hashlib
               import subprocess
               from types import SimpleNamespace
-              output = Path(os.environ["RUNNER_TEMP"]) / "first-row.json"
+              output = Path(os.environ["RUNNER_TEMP"]) / "verified-rows.json"
               args = SimpleNamespace(snapshots=Path("catalog/ready536"), output=output,
                                      browser=os.environ.get("STOREFRONT_BROWSER"), proxy=None,
                                      documents=None, static=None)
@@ -305,7 +347,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: verified-first-row
-          path: ${{ runner.temp }}/first-row.json
+          path: ${{ runner.temp }}/verified-rows.json
           if-no-files-found: error
           retention-days: 1
 
@@ -344,6 +386,8 @@ jobs:
 
           OUTPUT_REF = "refs/heads/catalog-first-row"
           FILENAME = "first-row.json"
+          SHOWER_FILE = "shower-row-previews.json"
+          SHOWER_ROUTE = "/?gc=smesiteli-i-dush&gs=dushevye-sistemy"
           GENERATION_PATH = "catalog/ready536/generation.json"
 
 
@@ -362,15 +406,23 @@ jobs:
 
           def publish(candidate, source):
               git("check-ref-format", "--branch", source)
-              body = candidate.read_bytes()
-              manifest = json.loads(body)
+              bundle = json.loads(candidate.read_bytes())
+              if not isinstance(bundle,dict) or set(bundle) != {FILENAME,SHOWER_FILE}:
+                  raise ValueError("Unexpected first-row files")
+              manifest = bundle[FILENAME]
               stamp = load_generation(manifest)
+              shower = bundle[SHOWER_FILE]
+              shower_pages = shower.get("pages")
+              if (shower.get("schema") != 1 or shower.get("generation") != stamp or
+                      not isinstance(shower_pages,dict) or not set(shower_pages) <= {SHOWER_ROUTE} or
+                      SHOWER_ROUTE in manifest["pages"]):
+                  raise ValueError("Invalid shower preview document")
               inventory = json.loads(Path(GENERATION_PATH).read_bytes())
               if inventory.get("schema") != 536 or inventory["at"] != stamp:
                   raise ValueError("First rows and checked-out source are from different generations")
               if not 0 <= int(time.time() * 1000) - stamp <= 86_400_000:
                   raise ValueError("Inventory generation is outside its storefront validity window")
-              for route, page in manifest["pages"].items():
+              for route, page in (manifest["pages"] | shower_pages).items():
                   part = page["part"]
                   if not isinstance(part, str) or not part.isascii() or not part.isdecimal() or part not in inventory["parts"]:
                       raise ValueError(f"Unknown inventory for {route}")
@@ -380,7 +432,10 @@ jobs:
                   if snapshot["part"] != part or inventory["parts"][part] != snapshot["total"]:
                       raise ValueError(f"Incompatible source for {route}")
 
-              blob = git("hash-object", "-w", "--stdin", data=body).decode().strip()
+              bodies = {name:json.dumps(doc,ensure_ascii=False,separators=(",",":"),allow_nan=False).encode("utf8")
+                        for name,doc in bundle.items()}
+              blobs = {name:git("hash-object","-w","--stdin",data=body).decode().strip()
+                       for name,body in bodies.items()}
               for _ in range(3):
                   git("fetch", "--no-tags", "--depth=1", "origin", "refs/heads/" + source)
                   head_inventory = json.loads(git("show", "FETCH_HEAD:" + GENERATION_PATH))
@@ -394,14 +449,18 @@ jobs:
                       parent = git("rev-parse", "FETCH_HEAD").decode().strip()
                       if git("ls-tree", parent, "--", FILENAME):
                           prev = git("show", f"{parent}:{FILENAME}")
-                          if prev == body or load_generation(json.loads(prev)) > stamp:
-                              print("The current first row is already published.")
+                          if load_generation(json.loads(prev)) > stamp:
+                              print("A newer first row is already published.")
                               return
                   with tempfile.TemporaryDirectory() as directory:
                       index_env = {**os.environ, "GIT_INDEX_FILE": str(Path(directory) / "index")}
                       git("read-tree", parent if parent else "--empty", env=index_env)
-                      git("update-index", "--add", "--cacheinfo", "100644", blob, FILENAME, env=index_env)
+                      for name,blob in blobs.items():
+                          git("update-index", "--add", "--cacheinfo", "100644", blob, name, env=index_env)
                       tree = git("write-tree", env=index_env).decode().strip()
+                  if parent and tree == git("rev-parse",parent + "^{tree}").decode().strip():
+                      print("Both first-row files are already published.")
+                      return
                   parents = ["-p", parent] if parent else []
                   commit = git("-c", "user.name=github-actions[bot]", "-c",
                                "user.email=41898282+github-actions[bot]@users.noreply.github.com",
@@ -414,7 +473,7 @@ jobs:
 
           if __name__ == "__main__":
               import hashlib
-              artifact = Path(os.environ["RUNNER_TEMP"]) / "verified-first-row" / FILENAME
+              artifact = Path(os.environ["RUNNER_TEMP"]) / "verified-first-row" / "verified-rows.json"
               if not artifact.is_file() or artifact.is_symlink() or not 0 < artifact.stat().st_size <= 131072:
                   raise ValueError("Unexpected first-row artifact")
               if hashlib.sha256(artifact.read_bytes()).hexdigest() != os.environ["EXPECTED_SHA256"]:
