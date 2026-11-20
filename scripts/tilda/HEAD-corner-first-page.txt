@@ -1,0 +1,105 @@
+<script id="gid-corner-first-page">
+(() => {
+  "use strict";
+  function isFirstPage() {
+    if (location.pathname !== "/" || window.self !== window.top) return false;
+    const params = new URLSearchParams(location.search);
+    if (params.getAll("gc").join() !== "vanny" || params.getAll("gs").join() !== "uglovye") return false;
+    return [...params.keys()].every(key => key === "gc" || key === "gs" || /^utm_/.test(key) || key === "gclid" || key === "yclid");
+  }
+  if (!isFirstPage() || window.GIDCornerFirstPage || navigator.connection?.saveData) return;
+  const address = "https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/main/catalog/ready536/first-pages/vanny-uglovye.json";
+  const renderHash = "94fcb15d3d22d2d7079cfa906d0bbcc815c142f2cbc863ba4b55ab9a153873a2";
+  const snapshot = fetch(address, {credentials: "omit", referrerPolicy: "no-referrer"})
+    .then(response => response.ok ? response.json() : null)
+    .then(data => {
+      const age = stamp => Date.now() - stamp;
+      if (!data || data.schema !== 1 || data.route !== "?gc=vanny&gs=uglovye" ||
+          data.part !== "338629674673" || data.renderHash !== renderHash ||
+          ![data.generation, data.sourceAt].every(value => Number.isSafeInteger(value) && age(value) >= 0 && age(value) < 2700000) ||
+          !Number.isSafeInteger(data.total) || data.total <= 0 || !Array.isArray(data.rows) ||
+          data.page?.page !== 1 || data.page?.limit !== 24 || data.page?.start !== 0 ||
+          data.page?.end !== data.rows.length || data.rows.length !== Math.min(24, data.total) ||
+          data.palette?.eligible !== false || data.palette.total !== data.total ||
+          !data.rows.every(row => row && /^\d+$/.test(String(row.uid)) && typeof row.title === "string") ||
+          new Set(data.rows.map(row => String(row.uid))).size !== data.rows.length) return null;
+      for (const row of data.rows.slice(0, innerWidth < 700 ? 2 : 4)) {
+        try {
+          const image = new URL(JSON.parse(row.gallery)[0].img);
+          if (image.origin !== "https://static.tildacdn.com" || !/^\/stor[^/]+\/[^/]+$/.test(image.pathname)) continue;
+          const link = document.createElement("link");
+          link.rel = "preload";
+          link.as = "image";
+          link.href = image.href.replace(/(\/stor[^/]+\/)/, "$1-/resize/640x/");
+          document.head.append(link);
+        } catch {}
+      }
+      return data;
+    }).catch(() => null);
+  let mounted = null;
+  const api = {
+    begin(full, grid, valid, draw) {
+      let pending = true;
+      full.then(() => { pending = false; }, () => { pending = false; });
+      snapshot.then(data => {
+        if (!pending || !data || !valid() || !isFirstPage() || !grid.isConnected || grid.querySelector("article")) return;
+        draw(data);
+        mounted = {grid, signature: JSON.stringify(data.rows), total: data.total};
+      }).catch(() => {});
+    },
+    reuse(grid, rows, palette) {
+      const old = mounted;
+      if (!old || old.grid !== grid) return false;
+      mounted = null;
+      if (!grid.isConnected || !isFirstPage() || !palette || palette.eligible !== false || old.total !== palette.total ||
+          old.signature !== JSON.stringify(rows)) return false;
+      const cards = [...grid.querySelectorAll(":scope > article[data-product-uid]")];
+      return cards.length === rows.length && cards.every((card, i) => card.dataset.productUid === String(rows[i].uid));
+    },
+    cancel(grid) {
+      if (!mounted || mounted.grid !== grid) return false;
+      mounted = null;
+      for (const image of grid.querySelectorAll("img")) image.disposePhoto29?.();
+      grid.replaceChildren();
+      return true;
+    }
+  };
+  const changes = [
+    ["const e=w();e.catch(()=>{});const t=await e;", `const e=w();
+window.GIDCornerFirstPage?.begin(e,G,()=>n===M&&R?.c?.id==="vanny"&&R?.s?.id==="uglovye"&&N===1&&q===24&&P==="popular"&&!Object.keys(V).length,data=>{
+ gt(G,data.rows,data.palette);k.textContent="Найдено товаров: "+data.total;C.hidden=!data.page.more;
+});e.catch(()=>{});const t=await e;`],
+    ["async function gt(e,t,paletteContext408=null){", "async function gt(e,t,paletteContext408=null){if(window.GIDCornerFirstPage?.reuse(e,t,paletteContext408))return Array.from(e.children);"],
+    ["function yt(){if(picksPending533){", `function yt(){if(picksPending533){
+ if((N!==1||q!==24||P!=="popular"||Object.keys(V).length)&&window.GIDCornerFirstPage?.cancel(G)){k.textContent="Загружаем товары…";C.hidden=true;}
+`],
+    ["if(n!==M)return;y.fail(),vt=null;", "if(n!==M)return;window.GIDCornerFirstPage?.cancel(G);y.fail(),vt=null;"]
+  ];
+  window.GIDCornerFirstPage = api;
+  const insertionMethods = [[Node.prototype,"insertBefore"],[Node.prototype,"appendChild"],[Element.prototype,"append"]];
+  const restores = [];
+  function restore() { for (const undo of restores) undo(); }
+  function inspect(node) {
+    if (node?.tagName !== "SCRIPT") return;
+    const source = node.textContent;
+    if (!source.startsWith("/* Sancos v4:") || !changes.every(([key]) => source.split(key).length === 2)) return;
+    let hash = 2166136261;
+    for (const byte of new TextEncoder().encode(source)) hash = Math.imul(hash ^ byte, 16777619);
+    if ((hash >>> 0) !== 3148845702) return;
+    let result = source;
+    for (const [key,value] of changes) result = result.replace(key, () => value);
+    node.textContent = result;
+    restore();
+  }
+  for (const [proto,key] of insertionMethods) {
+    const original = proto[key];
+    function wrapped(...args) {
+      try { for (const node of (key === "append" ? args : args.slice(0,1))) inspect(node); } catch {}
+      return Reflect.apply(original,this,args);
+    }
+    proto[key] = wrapped;
+    restores.push(() => { if (proto[key] === wrapped) proto[key] = original; });
+  }
+  setTimeout(restore, 60000);
+})();
+</script>
