@@ -91,6 +91,8 @@ jobs:
               "/?gc=vanny&gs=uglovye": BATH,
               "/?gc=vanny": BATH,
               "/?gc=smesiteli-i-dush": MIXERS,
+              "/?gc=zerkalnye-shkafy": "496159877623",
+              "/?gc=polotentsesushiteli": "267674723263",
               "/?gc=installyatsii-i-unitazy&gs=installyatsii": INSTALLATIONS,
               "/installyatsii-s-unitazom": INSTALLATIONS,
           }
