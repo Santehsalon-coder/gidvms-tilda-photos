@@ -1,0 +1,216 @@
+name: Corner baths first page
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Refresh ready category snapshots"]
+    types: [completed]
+    branches: [main]
+  push:
+    branches: [main]
+    paths: [.github/workflows/corner-baths.yml]
+permissions:
+  contents: write
+concurrency:
+  group: corner-baths-first-page
+  cancel-in-progress: false
+jobs:
+  build:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          sparse-checkout: catalog/ready536
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: |
+          python -m pip install playwright==1.58.0
+          python -m playwright install --with-deps chromium
+      - name: Generate and verify first page
+        run: |
+          cat > "$RUNNER_TEMP/build_corner.py" <<'PYTHON'
+          """Produce only native, default-order page-one listings from this workflow's generation."""
+          import argparse
+          import base64
+          import json
+          import os
+          import re
+          from pathlib import Path
+          import tempfile
+          import sys
+          from urllib.parse import urlparse
+          from urllib.request import urlopen
+          import zlib
+
+          from playwright.sync_api import sync_playwright
+
+          ORIGIN = "https://gidvms.ru"
+          PART = "338629674673"
+          ROUTES = {"vanny-uglovye": "?gc=vanny&gs=uglovye"}
+          EXPORT_JS = '/* Build-time probe, installed in isolated Chromium during the snapshot job. */\n(() => {\n  const needle = "const render408=gt(G,e.slice(page430.start,page430.end),palette408),epoch408=ft;";\n  const slot = "vt=y;try{if(n!==M||!R)return;const e=w();";\n  const test = `vt=y;try{if(n!==M||!R)return;\n    if(window.__firstPageCandidate){\n      const packageData=window.__firstPageCandidate;\n      const savedPool=_;\n      try{\n        _=packageData.rows.concat(packageData.pool);\n        await gt(G,packageData.rows,packageData.palette);\n        await new Promise(resolve=>setTimeout(resolve,1000));\n        window.__firstPageBuild.projected=window.__gidCardSignature(G);\n      } finally {_=savedPool;}\n    }\n    const e=w();`;\n  const adapter = "window.__gidExportPage(e.length,page430,palette408,e.slice(page430.start,page430.end),_);";\n  const text = Object.getOwnPropertyDescriptor(Node.prototype, "textContent");\n  const seen = new WeakSet();\n  const cfg = window.__firstPageConfig;\n  const api = window.__firstPageBuild = {matched: 0, ready: null, hash: null};\n\n  window.__gidCardSignature = function(grid){\n    const text = el => el?.innerText?.replace(/\\s+/g," ").trim() || "";\n    return [...grid.children].map(el => {\n      if (!el.matches("[data-product-uid]")) return {extra:el.className,title:text(el.querySelector("h2,h3,strong")),links:[...el.querySelectorAll(\'a[href]\')].map(a=>a.href)};\n      const photo=el.querySelector(\'.gc10-photo img,.gp12-photo img\');\n      return {\n        uid:el.dataset.productUid, title:text(el.querySelector(\'.gc10-title,.gp12-title\')),\n        price:text(el.querySelector(\'.gc10-price,.gp12-price\')),\n        photo:photo?.dataset.imageSrc || photo?.getAttribute(\'src\') || "",\n        controls:[...el.querySelectorAll("a[href],button")].filter(n=>n.offsetWidth&&n.offsetHeight).map(n=>[\n          n.tagName,text(n),n.title,n.getAttribute(\'aria-label\'),n.getAttribute(\'href\') ? n.href : null,n.disabled||n.getAttribute(\'aria-disabled\')||false\n        ])\n      };\n    });\n  };\n  window.__gidExportPage = function(total, page, palette, rows, pool) {\n    const source = window.GVS_PRODUCTS13?.category(cfg.part)?.getSnapshot?.();\n    if (source?.complete && source.at === cfg.sourceAt && location.href === cfg.url) {\n      api.ready = {total, page, palette, rows, pool};\n    }\n  };\n\n  function observe(node) {\n    if (node?.tagName !== "SCRIPT" || seen.has(node)) return;\n    const source = text.get.call(node);\n    if (!source.includes(needle)) return;\n    if (source.split(needle).length !== 2) throw Error("Ambiguous native grid");\n    seen.add(node);\n    api.matched++;\n    crypto.subtle.digest("SHA-256", new TextEncoder().encode(source)).then(hash => {\n      api.hash = [...new Uint8Array(hash)].map(n => n.toString(16).padStart(2,"0")).join("");\n    });\n    let hooked=source.replace(needle,adapter + needle);\n    if(window.__firstPageCandidate){\n      if(source.split(slot).length!==2) throw Error("Unsupported preview test hook");\n      hooked=hooked.replace(slot,test);\n    }\n    text.set.call(node,hooked);\n  }\n\n  const appendChild = Node.prototype.appendChild;\n  Node.prototype.appendChild = function(child) { observe(child); return appendChild.call(this, child); };\n  const insertBefore = Node.prototype.insertBefore;\n  Node.prototype.insertBefore = function(child, before) { observe(child); return insertBefore.call(this, child, before); };\n  const append = Element.prototype.append;\n  Element.prototype.append = function(...nodes) { nodes.forEach(observe); return append.apply(this, nodes); };\n})();\n'
+          GITHUB_ROOT = "https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/main/"
+          RAW = GITHUB_ROOT + "catalog/ready536/"
+
+
+          def load_json(path):
+              return json.loads(path.read_bytes())
+
+
+          def dump(data):
+              return json.dumps(data, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+
+
+          def source(snapshot_dir):
+              generation = load_json(snapshot_dir / "generation.json")
+              feed = load_json(snapshot_dir / f"{PART}.json")
+              if feed["schema"] != 536 or feed["part"] != PART or feed["total"] != generation["parts"][PART]:
+                  raise ValueError("Inventory does not match its manifest")
+              rows = []
+              for chunk in feed["chunks"]:
+                  body = zlib.decompress(base64.b64decode(chunk["data"], validate=True), -zlib.MAX_WBITS)
+                  if len(body) != chunk["size"]:
+                      raise ValueError("Invalid source chunk")
+                  rows.extend(json.loads(body))
+              ids = {str(p["uid"]) for p in rows}
+              if len(rows) != len(ids) or len(rows) != feed["total"]:
+                  raise ValueError("Duplicate or missing source UID")
+              return generation, feed, ids
+
+
+          def navigation(browser, snapshot_dir, html, generation, feed, name, query, width, candidate=None):
+              url = ORIGIN + "/" + query
+              ctx = browser.new_context(viewport={"width":width,"height":844 if width < 700 else 900},
+                                        is_mobile=width < 700, has_touch=width < 700, service_workers="block")
+              page = ctx.new_page()
+              seen = set()
+              try:
+                  cfg = {"url":url,"part":PART,"sourceAt":feed["at"]}
+                  setup = "window.__firstPageConfig=" + dump(cfg) + ";\n"
+                  if candidate:
+                      setup += "window.__firstPageCandidate=" + dump(candidate) + ";\n"
+                  page.add_init_script(script=setup + EXPORT_JS)
+                  def intercept(route):
+                      req = route.request
+                      u = urlparse(req.url)
+                      if req.method not in ("GET", "HEAD", "OPTIONS"):
+                          return route.abort()
+                      if req.is_navigation_request() and req.frame == page.main_frame:
+                          return route.fulfill(body=html,content_type="text/html; charset=utf-8") if req.url == url else route.abort()
+                      if req.url.startswith(RAW):
+                          tail = req.url[len(RAW):].split("?",1)[0]
+                          if not tail.endswith(".json") or "/" in tail or tail.startswith("."):
+                              return route.abort()
+                          path = snapshot_dir / tail
+                          if path.is_file():
+                              seen.add(tail)
+                              return route.fulfill(path=str(path),content_type="application/json",headers={"access-control-allow-origin":"*"})
+                          return route.abort()
+                      if u.hostname in ("store.tildaapi.com","store.tildacdn.com") or req.resource_type in ("media","font"):
+                          return route.abort()
+                      return route.continue_()
+                  ctx.route("**/*",intercept)
+                  page.goto(url,wait_until="commit",timeout=65000)
+                  page.wait_for_function("""() => {
+                   const x=window.__firstPageBuild, s=x?.ready;
+                   if(!s || x.matched!==1 || !x.hash) return false;
+                   const grid=document.querySelector('#gvs-category-page .gc10-results .gc10-grid');
+                   const actual=[...grid?.querySelectorAll(':scope > [data-product-uid]')||[]];
+                   const cnt=grid?.closest('#gvs-category-page')?.querySelector('.gc10-notice')?.textContent||'';
+                   return cnt.includes(String(s.total)) && actual.length===s.rows.length &&
+                    actual.every((el,i)=>el.dataset.productUid===String(s.rows[i].uid) &&
+                      el.querySelector('.gc10-title,.gp12-title')?.textContent?.trim() &&
+                      el.querySelector('.gc10-price,.gp12-price')?.textContent?.trim());
+                  }""", timeout=75000)
+                  page.wait_for_timeout(1050)
+                  if candidate:
+                      page.wait_for_function("()=>!!window.__firstPageBuild.projected",timeout=3000)
+                      actual = page.evaluate("""() => {
+                       const grid=document.querySelector('#gvs-category-page .gc10-results .gc10-grid');
+                       return [window.__firstPageBuild.projected,window.__gidCardSignature(grid)];
+                      }""")
+                      if actual[0] != actual[1]:
+                          if os.environ.get("GID_QA_DIFF_DIR"):
+                              (Path(os.environ["GID_QA_DIFF_DIR"]) / f"{name}-{width}-diff.json").write_text(dump(actual))
+                          different = [(row.get('uid',row.get('extra')),k) for row,complete in zip(*actual)
+                                       for k in complete if complete.get(k) != row.get(k)]
+                          raise ValueError(f"Incomplete native controls or images at {width}px: {different[:5]}")
+                  out = page.evaluate("""() => {
+                    const x=window.__firstPageBuild, s=x.ready;
+                    return {renderHash:x.hash,total:s.total,page:s.page,palette:s.palette,rows:s.rows,pool:[]};
+                  }""")
+                  if f"{PART}.json" not in seen:
+                      raise ValueError("The native renderer never read the pinned source")
+                  return dict(schema=1,available=True,url=url,route=query,generation=generation["at"],sourceAt=feed["at"],part=PART,**out)
+              finally:
+                  ctx.close()
+
+
+          def verify_candidate(browser, basedir, html, manifest, feed, slug, query, candidate):
+              for width in (1440,390):
+                  actual = navigation(browser,basedir,html,manifest,feed,slug,query,width,candidate)
+                  if actual != candidate:
+                      raise ValueError(f"Native result for {slug} differs from the pinned render at {width}px")
+
+
+          def build(args):
+              basedir = args.snapshots.resolve()
+              manifest, feed, ids = source(basedir)
+              html = args.template.read_bytes() if args.template else urlopen(ORIGIN+"/",timeout=40).read()
+              # A published preview hook wraps the native script. Generate from the original
+              # native renderer so the hook cannot recursively fingerprint its own wrapper.
+              html = re.sub(rb'<script\b(?=[^>]*\bid=["\']gid-corner-first-page["\'])[^>]*>.*?</script\s*>',
+                            b"", html, flags=re.I | re.S)
+              if b'data-tilda-project-id="25163343"' not in html:
+                  raise ValueError("Unexpected published storefront")
+              outputs = {}
+              with sync_playwright() as pw:
+                  browser = pw.chromium.launch(executable_path=args.browser, args=["--no-sandbox","--disable-dev-shm-usage"],
+                                  proxy={"server":args.proxy} if args.proxy else None)
+                  try:
+                      for slug,query in ROUTES.items():
+                          try:
+                              desktop = navigation(browser,basedir,html,manifest,feed,slug,query,1440)
+                              uids = [str(p["uid"]) for p in desktop["rows"]]
+                              if not 0 < len(uids) <= 24 or desktop["page"]["end"] != len(uids):
+                                  raise ValueError("Unexpected native page window")
+                              if len(set(uids)) != len(uids) or not set(uids).issubset(ids):
+                                  raise ValueError("Rendered UID not in the pinned category")
+                              verify_candidate(browser,basedir,html,manifest,feed,slug,query,desktop)
+                              outputs[slug] = dump(desktop)
+                              print(slug, desktop["total"], len(uids), len(outputs[slug].encode()), flush=True)
+                          except Exception as error:
+                              reason=str(error).splitlines()[0][:440]
+                              print(f"::warning::{slug}: preview unavailable; inventory continues. {reason}", file=sys.stderr, flush=True)
+                              outputs[slug] = dump(dict(schema=1,available=False,route=query,generation=manifest["at"]))
+                  finally:
+                      browser.close()
+              dest=basedir/"first-pages"
+              dest.mkdir(exist_ok=True)
+              for slug,data in outputs.items():
+                  with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=dest, delete=False) as tmp:
+                      tmp.write(data)
+                  os.replace(tmp.name,dest/(slug+".json"))
+
+
+          if __name__ == "__main__":
+              parser = argparse.ArgumentParser()
+              parser.add_argument("--snapshots",type=Path,default=Path("catalog/ready536"))
+              parser.add_argument("--template",type=Path)
+              parser.add_argument("--browser",default=None)
+              parser.add_argument("--proxy",default=None)
+              build(parser.parse_args())
+
+          PYTHON
+          python "$RUNNER_TEMP/build_corner.py"
+          python -c "import json; assert json.load(open('catalog/ready536/first-pages/vanny-uglovye.json'))['available']"
+      - name: Publish first page
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add catalog/ready536/first-pages/vanny-uglovye.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Refresh verified first page of corner baths'
+          git push origin HEAD:main
