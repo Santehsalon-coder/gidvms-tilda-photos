@@ -28,7 +28,7 @@ jobs:
           python-version: '3.12'
       - run: |
           python -m pip install playwright==1.58.0
-          python -m playwright install --with-deps chromium
+          google-chrome --version
       - name: Generate and verify first page
         run: |
           cat > "$RUNNER_TEMP/build_corner.py" <<'PYTHON'
@@ -204,7 +204,7 @@ jobs:
               build(parser.parse_args())
 
           PYTHON
-          python "$RUNNER_TEMP/build_corner.py"
+          python "$RUNNER_TEMP/build_corner.py" --browser "$(command -v google-chrome)"
           python -c "import json; assert json.load(open('catalog/ready536/first-pages/vanny-uglovye.json'))['available']"
       - name: Publish first page
         run: |
@@ -213,4 +213,5 @@ jobs:
           git add catalog/ready536/first-pages/vanny-uglovye.json
           if git diff --cached --quiet; then exit 0; fi
           git commit -m 'Refresh verified first page of corner baths'
+          git pull --rebase origin main
           git push origin HEAD:main
