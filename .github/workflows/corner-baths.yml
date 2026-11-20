@@ -206,11 +206,12 @@ jobs:
           PYTHON
           python "$RUNNER_TEMP/build_corner.py" --browser "$(command -v google-chrome)"
           python -c "import json; assert json.load(open('catalog/ready536/first-pages/vanny-uglovye.json'))['available']"
+          gzip -n -9 -c catalog/ready536/first-pages/vanny-uglovye.json > catalog/ready536/first-pages/vanny-uglovye.json.gz
       - name: Publish first page
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add catalog/ready536/first-pages/vanny-uglovye.json
+          git add catalog/ready536/first-pages/vanny-uglovye.json catalog/ready536/first-pages/vanny-uglovye.json.gz
           if git diff --cached --quiet; then exit 0; fi
           git commit -m 'Refresh verified first page of corner baths'
           git pull --rebase origin main
