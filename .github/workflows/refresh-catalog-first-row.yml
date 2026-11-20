@@ -1,0 +1,420 @@
+name: Refresh storefront first rows
+
+on:
+  workflow_run:
+    workflows: ["Refresh ready category snapshots"]
+    types: [completed]
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/refresh-catalog-first-row.yml
+
+permissions: {}
+
+concurrency:
+  group: publish-catalog-first-row
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: >-
+      github.ref_name == github.event.repository.default_branch &&
+      (github.event_name != 'workflow_run' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_repository.full_name == github.repository &&
+        github.event.workflow_run.head_branch == github.event.repository.default_branch))
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    outputs:
+      source: ${{ steps.render.outputs.source }}
+      sha256: ${{ steps.render.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          persist-credentials: false
+          sparse-checkout: catalog/ready536
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.cache/ms-playwright
+          key: first-row-browser-${{ runner.os }}-${{ runner.arch }}-1.62.0
+
+      - name: Prepare Chromium
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/first-row-env"
+          source "$RUNNER_TEMP/first-row-env/bin/activate"
+          python -m pip install --disable-pip-version-check 'playwright==1.62.0'
+          echo "$RUNNER_TEMP/first-row-env/bin" >> "$GITHUB_PATH"
+          if chrome=$(command -v google-chrome); then
+            echo "STOREFRONT_BROWSER=$chrome" >> "$GITHUB_ENV"
+          else
+            python -m playwright install chromium --only-shell
+          fi
+
+      - name: Read the native storefront using the checked-out product data
+        id: render
+        shell: python
+        run: |
+          """Build first-row previews from the published storefront using a pinned Ready536 generation."""
+          import argparse
+          import asyncio
+          import base64
+          import json
+          import os
+          import re
+          import sys
+          import tempfile
+          import time
+          import zlib
+          from decimal import Decimal, InvalidOperation
+          from pathlib import Path
+          from urllib.parse import parse_qs, urlsplit
+          from urllib.request import Request, urlopen
+
+          from playwright.async_api import async_playwright
+
+          ORIGIN = "https://gidvms.ru"
+          READY = "https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/main/catalog/ready536/"
+          BATH, FURNITURE, MIXERS, INSTALLATIONS = "338629674673", "872810302623", "389742041783", "422452689173"
+          ROUTES = {
+              "/?gc=mebel-dlya-vannoy": FURNITURE,
+              "/?gc=vanny&gs=iz-iskusstvennogo-kamnya": BATH,
+              "/installyatsii": INSTALLATIONS,
+              "/?gc=vanny&gs=uglovye": BATH,
+              "/?gc=vanny": BATH,
+              "/?gc=smesiteli-i-dush": MIXERS,
+              "/?gc=installyatsii-i-unitazy&gs=installyatsii": INSTALLATIONS,
+              "/installyatsii-s-unitazom": INSTALLATIONS,
+          }
+          WIDTHS = (1440, 390)
+          MAX_AGE = 86_400_000
+
+          def load(path):
+              return json.loads(path.read_bytes())
+
+          def source_for(directory, manifest, part):
+              feed = load(directory / (part + ".json"))
+              if (feed["schema"] != 536 or feed["part"] != part or
+                      feed["encoding"] != "deflate-raw-base64-chunks" or
+                      feed["total"] != manifest["parts"][part] or
+                      not 0 <= manifest["at"] - feed["at"] <= MAX_AGE):
+                  raise ValueError(f"Invalid snapshot for {part}")
+              products = {}
+              for chunk in feed["chunks"]:
+                  data = zlib.decompress(base64.b64decode(chunk["data"], validate=True), -15)
+                  if len(data) != chunk["size"]:
+                      raise ValueError(f"Invalid uncompressed chunk for {part}")
+                  for product in json.loads(data):
+                      uid = str(product["uid"])
+                      if uid in products:
+                          raise ValueError(f"Duplicate source UID {uid}")
+                      products[uid] = product
+              if len(products) != feed["total"]:
+                  raise ValueError(f"Incomplete snapshot for {part}")
+              return feed["at"], products
+
+          def published(path):
+              with urlopen(Request(ORIGIN + path, headers={"User-Agent": "GID-Storefront-Snapshot/1.0"}), timeout=35) as response:
+                  if urlsplit(response.geturl()).netloc != "gidvms.ru":
+                      raise ValueError("Unexpected final HTML origin")
+                  data = response.read(6_000_001)
+              if len(data) > 6_000_000 or b'data-tilda-project-id="25163343"' not in data:
+                  raise ValueError("Unexpected storefront HTML")
+              return data
+
+          PROBE = r"""({part, sourceAt}) => {
+            const state = window.GVS_PRODUCTS13?.category(part)?.getSnapshot?.();
+            if (!state?.complete || state.at !== sourceAt) return false;
+            const root = document.querySelector('#gvs-category-page');
+            const grid = root?.querySelector('.gc10-results > .gc10-grid');
+            if (!grid || !grid.offsetWidth) return false;
+            const text = el => el?.innerText?.replace(/\s+/g, ' ').trim() || '';
+            const total = text(root.querySelector('.gc10-notice')).match(/Найдено товаров:\s*([\d ]+)/);
+            if (!total) return false;
+            const cells = [...grid.children].filter(el => el.offsetWidth);
+            if (cells.length < 4 || !cells.slice(0,4).every(el => /^\d{12}$/.test(el.dataset.productUid))) return false;
+            const cards = cells.slice(0,4).map(el => {
+              const image = el.querySelector('.gc10-photo img,.gp12-photo img');
+              const link = el.querySelector('a.gc10-photo,a.gp12-photo');
+              return {uid:el.dataset.productUid,title:text(el.querySelector('.gc10-title,.gp12-title')),
+                price:text(el.querySelector('.gc10-price,.gp12-price')),
+                photo:[image?.currentSrc,image?.getAttribute('src'),image?.dataset.imageSrc].find(s=>s?.startsWith('https://')) || '',
+                href:link?.href || ''};
+            });
+            if (!cards.every(c => c.title && c.price.includes('₽') && c.href && c.photo)) return false;
+            return {heading:text(root.querySelector('h1')), total:Number(total[1].replace(/ /g,'')), cards};
+          }"""
+
+          def photo_id(url):
+              parsed = urlsplit(url)
+              return re.sub(r"/-/[^?]+/(?=[^/]+$)", "/", parsed.path)
+
+          async def observe(browser, route, width, directory, docs, part, stamp, static):
+              ctx = await browser.new_context(viewport={"width": width, "height": 900 if width > 700 else 844},
+                                              is_mobile=width < 700, has_touch=width < 700, service_workers="block")
+              page = await ctx.new_page()
+              seen = set()
+              async def intercept(r):
+                  u = urlsplit(r.request.url)
+                  if r.request.method not in {"GET","HEAD","OPTIONS"}:
+                      return await r.abort()
+                  if u.netloc == "gidvms.ru" and u.path in docs and (r.request.is_navigation_request() or r.request.resource_type in {"fetch","xhr"}):
+                      return await r.fulfill(body=docs[u.path], content_type="text/html; charset=utf-8")
+                  if r.request.url.startswith(READY):
+                      tail = u.path.rsplit("/",1)[-1]
+                      if u.path.endswith("/" + part + ".json") and tail == part + ".json":
+                          seen.add(part)
+                          return await r.fulfill(path=directory / tail, headers={"Content-Type":"application/json","Access-Control-Allow-Origin":"*"})
+                      return await r.abort()
+                  if u.hostname and ("tildaapi." in u.hostname or "tildacdn." in u.hostname) and "/api/" in u.path and "getproducts" in u.path:
+                      return await r.abort()
+                  if "getproductslist" in r.request.url or "getproduct/" in r.request.url:
+                      return await r.abort()
+                  if r.request.resource_type in {"media", "font"}:
+                      return await r.abort()
+                  if r.request.url in static and r.request.resource_type in {"script","stylesheet"}:
+                      return await r.fulfill(path=static[r.request.url],content_type="text/css" if ".css" in u.path else "text/javascript")
+                  return await r.continue_()
+              try:
+                  await ctx.route("**/*", intercept)
+                  await page.goto(ORIGIN + route, wait_until="commit",timeout=45000)
+                  probe = await page.wait_for_function(PROBE, arg={"part":part, "sourceAt":stamp}, timeout=55000)
+                  result = await probe.json_value()
+                  await page.wait_for_timeout(350)
+                  stable = await page.evaluate(PROBE, {"part":part, "sourceAt":stamp})
+                  if not stable or any(stable[k] != result[k] for k in ("heading","total")):
+                      raise ValueError("Native page changed while sampling")
+                  for before, after in zip(result["cards"], stable["cards"], strict=True):
+                      if any(before[k] != after[k] for k in ("uid","price","title","href")) or photo_id(before["photo"]) != photo_id(after["photo"]):
+                          raise ValueError("Native first row changed while sampling")
+                  result = stable
+                  if part not in seen or not result.get("heading") or result["total"] < len(result["cards"]):
+                      raise ValueError("Unverified native product list")
+                  return result
+              finally:
+                  await ctx.close()
+
+          def verify(route, rendered, products):
+              first, other = rendered
+              if (first["total"],first["heading"]) != (other["total"],other["heading"]):
+                  raise ValueError("Viewport results disagree")
+              ids = set()
+              for card, mobile in zip(first["cards"], other["cards"],strict=True):
+                  uid = card["uid"]
+                  if any(card[k] != mobile[k] for k in ("uid","price","title","href")) or photo_id(card["photo"]) != photo_id(mobile["photo"]):
+                      raise ValueError(f"Viewport cards disagree for {uid}")
+                  if uid in ids or uid not in products:
+                      raise ValueError(f"Wrong UID {uid}")
+                  ids.add(uid)
+                  row = products[uid]
+                  gallery = row.get("gallery") or []
+                  if isinstance(gallery,str):
+                      gallery = json.loads(gallery)
+                  editions = row.get("editions") or []
+                  own_photos = {photo_id(entry["img"]) for entry in [*gallery,*editions] if isinstance(entry,dict) and entry.get("img")}
+                  if photo_id(card["photo"]) not in own_photos:
+                      raise ValueError(f"Native image does not belong to snapshot UID {uid}")
+                  price = re.fullmatch(r"(?:от )?([0-9][0-9 ]*(?:[,.][0-9]{1,2})?) ?₽",card["price"],re.I)
+                  if price is None:
+                      raise ValueError(f"Unsupported price format for {uid}")
+                  actual_price = Decimal(price.group(1).replace(" ","").replace(",","."))
+                  current_prices = set()
+                  for item in [row,*editions]:
+                      if isinstance(item,dict) and item.get("price") not in (None,""):
+                          try:
+                              current_prices.add(Decimal(str(item["price"]).replace(" ","").replace(",", ".")))
+                          except InvalidOperation:
+                              continue
+                  if actual_price <= 0 or actual_price not in current_prices:
+                      raise ValueError(f"Native price does not belong to snapshot UID {uid}")
+                  image, link = map(urlsplit, (card["photo"],card["href"]))
+                  if link.scheme != "https" or link.netloc != "gidvms.ru" or parse_qs(link.query).get("gp") != [uid]:
+                      raise ValueError(f"Wrong product link for {uid}")
+                  if image.scheme != "https" or not image.hostname or not image.hostname.endswith((".tildacdn.com",".tildacdn.net",".tildacdn.info")):
+                      raise ValueError(f"Untrusted native photo for {uid}")
+              return first
+
+          def write_json(path,data):
+              path.parent.mkdir(parents=True,exist_ok=True)
+              with tempfile.NamedTemporaryFile(dir=path.parent,mode="w",encoding="utf8",delete=False) as tmp:
+                  json.dump(data,tmp,ensure_ascii=False,separators=(",",":"),allow_nan=False)
+              os.replace(tmp.name,path)
+
+          async def build(args):
+              directory=args.snapshots.resolve()
+              manifest=load(directory/"generation.json")
+              if manifest["schema"] != 536 or not 0 <= time.time()*1000-manifest["at"] <= MAX_AGE:
+                  raise ValueError("The Ready536 generation is expired or in the future")
+              paths=sorted({urlsplit(r).path for r in ROUTES})
+              async def fetch_document(path):
+                  if args.documents:
+                      return (args.documents/(path.strip("/") or "index")).with_suffix(".html").read_bytes()
+                  return await asyncio.to_thread(published,path)
+              docs=dict(zip(paths,await asyncio.gather(*(fetch_document(p) for p in paths))))
+              bypart={p:source_for(directory,manifest,p) for p in set(ROUTES.values())}
+              static=load(args.static) if args.static else {}
+              output={"schema":1,"generation":manifest["at"],"pages":{}}
+              async with async_playwright() as pw:
+                  browser=await pw.chromium.launch(executable_path=args.browser,proxy={"server":args.proxy} if args.proxy else None,args=["--no-sandbox","--disable-dev-shm-usage"])
+                  try:
+                      gate=asyncio.Semaphore(3)
+                      async def render(route, width):
+                          async with gate:
+                              part=ROUTES[route]
+                              return await observe(browser,route,width,directory,docs,part,bypart[part][0],static)
+                      async def one(route,part):
+                          try:
+                              pages=await asyncio.gather(*(render(route,w) for w in WIDTHS))
+                              stamp,products=bypart[part]
+                              page=verify(route,pages,products)
+                              output["pages"][route]={"part":part,"sourceAt":stamp,**page}
+                              print(route,page["total"],[r["uid"] for r in page["cards"]],flush=True)
+                          except Exception as exc:
+                              print("Preview unavailable",route,str(exc).splitlines()[0],file=sys.stderr,flush=True)
+                      await asyncio.gather(*(one(r,p) for r,p in ROUTES.items()))
+                  finally:
+                      await browser.close()
+              if not output["pages"]:raise ValueError("No verified first rows in this generation")
+              write_json(args.output,output)
+
+          if __name__ == "__main__":
+              import hashlib
+              import subprocess
+              from types import SimpleNamespace
+              output = Path(os.environ["RUNNER_TEMP"]) / "first-row.json"
+              args = SimpleNamespace(snapshots=Path("catalog/ready536"), output=output,
+                                     browser=os.environ.get("STOREFRONT_BROWSER"), proxy=None,
+                                     documents=None, static=None)
+              asyncio.run(build(args))
+              digest = hashlib.sha256(output.read_bytes()).hexdigest()
+              commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf8") as meta:
+                  print("sha256=" + digest, file=meta)
+                  print("source=" + commit, file=meta)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-first-row
+          path: ${{ runner.temp }}/first-row.json
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: build
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.build.outputs.source }}
+          fetch-depth: 1
+          sparse-checkout: catalog/ready536
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: verified-first-row
+          path: ${{ runner.temp }}/verified-first-row
+
+      - name: Publish the verified JSON in its own branch
+        env:
+          SOURCE_BRANCH: ${{ github.event.repository.default_branch }}
+          EXPECTED_SHA256: ${{ needs.build.outputs.sha256 }}
+        shell: python
+        run: |
+          """Publish verified listings to an independent branch without rewriting inventory history."""
+          import argparse
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          import tempfile
+          import time
+
+          OUTPUT_REF = "refs/heads/catalog-first-row"
+          FILENAME = "first-row.json"
+          GENERATION_PATH = "catalog/ready536/generation.json"
+
+
+          def git(*args, data=None, env=None):
+              return subprocess.run(
+                  ["git", *args], input=data, stdout=subprocess.PIPE, check=True, env=env
+              ).stdout
+
+
+          def load_generation(manifest):
+              stamp = manifest.get("generation")
+              if manifest.get("schema") != 1 or type(stamp) is not int or stamp <= 0 or not manifest.get("pages"):
+                  raise ValueError("Missing first-row generation or pages")
+              return stamp
+
+
+          def publish(candidate, source):
+              git("check-ref-format", "--branch", source)
+              body = candidate.read_bytes()
+              manifest = json.loads(body)
+              stamp = load_generation(manifest)
+              inventory = json.loads(Path(GENERATION_PATH).read_bytes())
+              if inventory.get("schema") != 536 or inventory["at"] != stamp:
+                  raise ValueError("First rows and checked-out source are from different generations")
+              if not 0 <= int(time.time() * 1000) - stamp <= 86_400_000:
+                  raise ValueError("Inventory generation is outside its storefront validity window")
+              for route, page in manifest["pages"].items():
+                  part = page["part"]
+                  if not isinstance(part, str) or not part.isascii() or not part.isdecimal() or part not in inventory["parts"]:
+                      raise ValueError(f"Unknown inventory for {route}")
+                  snapshot = json.loads((Path(GENERATION_PATH).parent / (part + ".json")).read_bytes())
+                  if snapshot["at"] != page["sourceAt"] or not 0 <= stamp - page["sourceAt"] <= 86_400_000:
+                      raise ValueError(f"Incompatible source timestamp for {route}")
+                  if snapshot["part"] != part or inventory["parts"][part] != snapshot["total"]:
+                      raise ValueError(f"Incompatible source for {route}")
+
+              blob = git("hash-object", "-w", "--stdin", data=body).decode().strip()
+              for _ in range(3):
+                  git("fetch", "--no-tags", "--depth=1", "origin", "refs/heads/" + source)
+                  head_inventory = json.loads(git("show", "FETCH_HEAD:" + GENERATION_PATH))
+                  if stamp != head_inventory["at"]:
+                      print("Inventory advanced during rendering. The next snapshot job will render the new generation.")
+                      return
+                  exists = git("ls-remote", "--heads", "origin", OUTPUT_REF).strip()
+                  parent = None
+                  if exists:
+                      git("fetch", "--no-tags", "--depth=1", "origin", OUTPUT_REF)
+                      parent = git("rev-parse", "FETCH_HEAD").decode().strip()
+                      if git("ls-tree", parent, "--", FILENAME):
+                          prev = git("show", f"{parent}:{FILENAME}")
+                          if prev == body or load_generation(json.loads(prev)) > stamp:
+                              print("The current first row is already published.")
+                              return
+                  with tempfile.TemporaryDirectory() as directory:
+                      index_env = {**os.environ, "GIT_INDEX_FILE": str(Path(directory) / "index")}
+                      git("read-tree", parent if parent else "--empty", env=index_env)
+                      git("update-index", "--add", "--cacheinfo", "100644", blob, FILENAME, env=index_env)
+                      tree = git("write-tree", env=index_env).decode().strip()
+                  parents = ["-p", parent] if parent else []
+                  commit = git("-c", "user.name=github-actions[bot]", "-c",
+                               "user.email=41898282+github-actions[bot]@users.noreply.github.com",
+                               "commit-tree", tree, *parents, "-m", f"Refresh storefront first rows for generation {stamp}")
+                  result = subprocess.run(["git", "push", "origin", commit.decode().strip() + ":" + OUTPUT_REF])
+                  if result.returncode == 0:
+                      print("Published", len(manifest["pages"]), "routes for inventory", stamp)
+                      return
+              raise RuntimeError("Could not publish the new first-row commit")
+
+          if __name__ == "__main__":
+              import hashlib
+              artifact = Path(os.environ["RUNNER_TEMP"]) / "verified-first-row" / FILENAME
+              if not artifact.is_file() or artifact.is_symlink() or not 0 < artifact.stat().st_size <= 131072:
+                  raise ValueError("Unexpected first-row artifact")
+              if hashlib.sha256(artifact.read_bytes()).hexdigest() != os.environ["EXPECTED_SHA256"]:
+                  raise ValueError("Downloaded first row differs from the browser-verified build")
+              publish(artifact, os.environ["SOURCE_BRANCH"])
