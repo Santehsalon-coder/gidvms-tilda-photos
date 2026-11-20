@@ -65,6 +65,7 @@ jobs:
         run: |
           """Build first-row previews from the published storefront using a pinned Ready536 generation."""
           import argparse
+          from copy import deepcopy
           import asyncio
           import base64
           import json
@@ -96,10 +97,23 @@ jobs:
               "/?gc=vanny": BATH,
               "/?gc=smesiteli-i-dush": MIXERS,
               SHOWER_SUBCATEGORY: MIXERS,
+              "/?gc=zerkala": "496159877623",
+              "/?gc=kuhonnye-moyki&gsubs=moyki-dlya-kuhni": "156462311843",
               "/?gc=zerkalnye-shkafy": "496159877623",
               "/?gc=polotentsesushiteli": "267674723263",
               "/?gc=installyatsii-i-unitazy&gs=installyatsii": INSTALLATIONS,
               "/installyatsii-s-unitazom": INSTALLATIONS,
+          }
+          ROW_FILES = {
+              "/?gc=mebel-dlya-vannoy": "rows/mebel-dlya-vannoy.json",
+              "/?gc=vanny&gs=iz-iskusstvennogo-kamnya": "rows/vanny-iz-iskusstvennogo-kamnya.json",
+              "/installyatsii": "rows/installyatsii.json",
+              "/installyatsii-s-unitazom": "rows/installyatsii-s-unitazom.json",
+              "/?gc=zerkala": "rows/zerkala.json",
+              "/?gc=zerkalnye-shkafy": "rows/zerkalnye-shkafy.json",
+              "/?gc=smesiteli-i-dush": "rows/smesiteli-i-dush.json",
+              "/?gc=kuhonnye-moyki&gsubs=moyki-dlya-kuhni": "rows/moyki-dlya-kuhni.json",
+              "/?gc=polotentsesushiteli": "rows/polotentsesushiteli.json",
           }
           WIDTHS = (1440, 390)
           MAX_AGE = 86_400_000
@@ -160,6 +174,83 @@ jobs:
             return {heading:text(root.querySelector('h1')), total:Number(total[1].replace(/ /g,'')), cards};
           }"""
 
+          TOWEL_BRANDS_ROUTE = "/?gc=polotentsesushiteli"
+
+          TOWEL_BRANDS_PROBE = r"""({part, sourceAt}) => {
+            const state = window.GVS_PRODUCTS13?.category(part)?.getSnapshot?.();
+            if (!state?.complete || state.at !== sourceAt || !Array.isArray(state.items)) return [];
+            const root = document.querySelector('#gvs-category-page .g515-brand-rail');
+            const cards = [...root?.querySelectorAll(':scope > a.g515-brand') || []];
+            const facet = window.GIDStoreCard?.facet;
+            if (!cards.length || typeof facet !== 'function') return [];
+            const key = url => {try {return new URL(url).pathname.replace(/\/-\/[^?]+\/(?=[^/]+$)/,'/')}catch{return ''}};
+            const rows = cards.map(a => ({name:a.querySelector('strong')?.textContent.trim(),
+              href:a.getAttribute('href'), photo:a.querySelector('.g515-brand-photo')?.dataset.imageSrc,
+              pick:a.dataset.pick515}));
+            if (rows.some(r=>!r.name || !r.photo || !r.href || r.pick!=='brand:'+r.name)) return [];
+            const byPhoto = new Map();
+            for (const r of rows) {
+              const id = key(r.photo);
+              if (!id) return [];
+              if (!byPhoto.has(id)) byPhoto.set(id,[]);
+              byPhoto.get(id).push(r);
+            }
+            for (const product of state.items) {
+              let gallery = product.gallery || [];
+              if (typeof gallery === 'string') {try{gallery=JSON.parse(gallery)}catch{continue}}
+              if (!Array.isArray(gallery)) continue;
+              const first = gallery.find(v=>typeof v==='string' ? !!v : !!v?.img);
+              const candidates = byPhoto.get(key(typeof first==='string' ? first : first?.img));
+              if (!candidates) continue;
+              const raw = (Array.isArray(product.characteristics)?product.characteristics:[])
+                .filter(c=>/^(бренд|производитель)$/i.test(String(c?.title||'').trim())).map(c=>c.value);
+              const brands = facet(product,raw);
+              for (const r of candidates) {
+                if (!r.uid && Array.isArray(brands) && brands.includes(r.name)) r.uid=String(product.uid);
+              }
+            }
+            return rows.every(r=>r.uid) ? rows.map(({name,href,photo,uid})=>({name,href,photo,uid})) : [];
+          }"""
+
+          async def observe_towel_brands(page, part, stamp):
+              arg={"part":part,"sourceAt":stamp}
+              previous=[]
+              for _ in range(5):
+                  observed=await page.evaluate(TOWEL_BRANDS_PROBE,arg)
+                  if observed and observed==previous:
+                      return observed
+                  previous=observed
+                  await asyncio.sleep(0.18)
+              return []
+
+          def checked_towel_brands(desktop, mobile, products):
+              rows=desktop.get("towelWitnesses",[])
+              if not rows or rows!=mobile.get("towelWitnesses") or len({r["name"] for r in rows})!=len(rows):
+                  return []
+              result=[]
+              for r in rows:
+                  try:
+                      target=urlsplit(r["href"])
+                      params=parse_qs(target.query,strict_parsing=True)
+                      image=urlsplit(r["photo"])
+                      source=products.get(r["uid"])
+                      if not source or not re.fullmatch(r"\d{12}",r["uid"]): return []
+                      gallery=source.get("gallery") or []
+                      if isinstance(gallery,str): gallery=json.loads(gallery)
+                      own={photo_id(e if isinstance(e,str) else e["img"]) for e in gallery if isinstance(e,str) or (isinstance(e,dict) and e.get("img"))}
+                      if (target.scheme or target.netloc or target.path!="/" or target.fragment or
+                              set(params)!={"gc","qf"} or params["gc"]!=["polotentsesushiteli"] or len(params["qf"])!=1 or
+                              json.loads(params["qf"][0])!={"brand":[r["name"]]} or
+                              image.scheme!="https" or image.username or image.password or not image.hostname or
+                              not image.hostname.endswith((".tildacdn.com",".tildacdn.net",".tildacdn.info")) or
+                              photo_id(r["photo"]) not in own):
+                          return []
+                      result.append({k:r[k] for k in ("name","href","photo")})
+                  except (KeyError,AttributeError,TypeError,ValueError):
+                      return []
+              return result
+
+
           def photo_id(url):
               parsed = urlsplit(url)
               return re.sub(r"/-/[^?]+/(?=[^/]+$)", "/", parsed.path)
@@ -205,6 +296,8 @@ jobs:
                   result = stable
                   if part not in seen or not result.get("heading") or result["total"] < len(result["cards"]):
                       raise ValueError("Unverified native product list")
+                  if route == TOWEL_BRANDS_ROUTE:
+                      result['towelWitnesses'] = await observe_towel_brands(page,part,stamp)
                   return result
               finally:
                   await ctx.close()
@@ -247,6 +340,10 @@ jobs:
                       raise ValueError(f"Wrong product link for {uid}")
                   if image.scheme != "https" or not image.hostname or not image.hostname.endswith((".tildacdn.com",".tildacdn.net",".tildacdn.info")):
                       raise ValueError(f"Untrusted native photo for {uid}")
+              if route == TOWEL_BRANDS_ROUTE:
+                  brands=checked_towel_brands(first,other,products)
+                  first.pop('towelWitnesses',None)
+                  if brands: first['brands']=brands
               return first
 
           def preview_bytes(raw):
@@ -254,33 +351,49 @@ jobs:
                   if source.format not in {"JPEG","PNG","WEBP"} or source.width*source.height > 24_000_000:
                       raise ValueError("Unsupported preview source")
                   image = ImageOps.exif_transpose(source)
-                  image.thumbnail((240,240), Image.Resampling.LANCZOS)
-                  if image.mode not in {"RGB","RGBA"}:
+                  if image.mode not in {"RGB", "RGBA"}:
                       image = image.convert("RGBA" if "transparency" in image.info else "RGB")
-                  buffer = BytesIO()
-                  image.save(buffer, "WEBP", quality=76, method=5)
-              data = buffer.getvalue()
-              if len(data) > 9_000:
-                  raise ValueError("Preview exceeded the byte budget")
-              return "data:image/webp;base64," + base64.b64encode(data).decode("ascii")
+                  for size, quality in ((240, 76), (220, 69), (200, 62), (160, 58)):
+                      image.thumbnail((size, size), Image.Resampling.LANCZOS)
+                      buffer = BytesIO()
+                      image.save(buffer, "WEBP", quality=quality, method=5)
+                      data = buffer.getvalue()
+                      if len(data) <= 9_000:
+                          return "data:image/webp;base64," + base64.b64encode(data).decode("ascii")
+              raise ValueError("Preview exceeded the byte budget")
 
           def preview_for(card):
-              url = card["photo"]
-              with urlopen(Request(url, headers={"User-Agent":"GID-Storefront-Snapshot/1.0"}), timeout=12) as response:
-                  if response.geturl() != url:
-                      raise ValueError("Preview photo changed address")
-                  raw = response.read(4_000_001)
-              if len(raw) > 4_000_000:
-                  raise ValueError("Preview source exceeded the byte budget")
-              return preview_bytes(raw)
+              primary = urlsplit(card["photo"])
+              if primary.scheme != "https" or not primary.hostname or not primary.hostname.endswith((".tildacdn.com",".tildacdn.net",".tildacdn.info")):
+                  raise ValueError("Unexpected preview origin")
+              candidates = [primary.geturl()]
+              if primary.netloc in {"static.tildacdn.com", "thb.tildacdn.com"}:
+                  mirror = "thb.tildacdn.com" if primary.netloc == "static.tildacdn.com" else "static.tildacdn.com"
+                  candidates.append(primary._replace(netloc=mirror).geturl())
+                  full_path = photo_id(primary.geturl())
+                  if full_path != primary.path:
+                      candidates.append(primary._replace(path=full_path).geturl())
+              for url in candidates:
+                  try:
+                      with urlopen(Request(url, headers={"User-Agent":"GID-Storefront-Snapshot/1.0"}), timeout=10) as response:
+                          if response.geturl() != url:
+                              raise ValueError("Preview photo changed address")
+                          raw = response.read(4_000_001)
+                      if len(raw) > 4_000_000:
+                          raise ValueError("Preview source exceeded the byte budget")
+                      return preview_bytes(raw)
+                  except (HTTPException, OSError, ValueError, SyntaxError, Image.DecompressionBombError):
+                      if url == candidates[-1]:
+                          raise
 
-          async def add_previews(page):
+          async def add_previews(items, gate):
               async def one(card):
                   try:
-                      card["preview"] = await asyncio.to_thread(preview_for, card)
+                      async with gate:
+                          card["preview"] = await asyncio.to_thread(preview_for, card)
                   except (HTTPException, OSError, ValueError, SyntaxError, Image.DecompressionBombError) as exc:
-                      print("Optional image unavailable",card["uid"],str(exc),file=sys.stderr,flush=True)
-              await asyncio.gather(*(one(card) for card in page["cards"][:2]))
+                      print("Optional image unavailable",card.get("uid",card.get("name","")),str(exc),file=sys.stderr,flush=True)
+              await asyncio.gather(*(one(card) for card in items))
 
           def write_json(path,data):
               path.parent.mkdir(parents=True,exist_ok=True)
@@ -302,6 +415,8 @@ jobs:
               bypart={p:source_for(directory,manifest,p) for p in set(ROUTES.values())}
               static=load(args.static) if args.static else {}
               output={"schema":1,"generation":manifest["at"],"pages":{}}
+              per_route={}
+              photo_gate=asyncio.Semaphore(5)
               async with async_playwright() as pw:
                   browser=await pw.chromium.launch(executable_path=args.browser,proxy={"server":args.proxy} if args.proxy else None,args=["--no-sandbox","--disable-dev-shm-usage"])
                   try:
@@ -315,9 +430,15 @@ jobs:
                               pages=await asyncio.gather(*(render(route,w) for w in WIDTHS))
                               stamp,products=bypart[part]
                               page=verify(route,pages,products)
+                              page={"part":part,"sourceAt":stamp,**page}
                               if route == SHOWER_SUBCATEGORY:
-                                  await add_previews(page)
-                              output["pages"][route]={"part":part,"sourceAt":stamp,**page}
+                                  await add_previews(page["cards"][:2], photo_gate)
+                              elif route in ROW_FILES:
+                                  detailed=deepcopy(page)
+                                  await add_previews(detailed["cards"] + detailed.get("brands",[]), photo_gate)
+                                  per_route[route]=detailed
+                                  page.pop("brands",None)
+                              output["pages"][route]=page
                               print(route,page["total"],[r["uid"] for r in page["cards"]],flush=True)
                           except Exception as exc:
                               print("Preview unavailable",route,str(exc).splitlines()[0],file=sys.stderr,flush=True)
@@ -327,7 +448,11 @@ jobs:
               shower = output["pages"].pop(SHOWER_SUBCATEGORY, None)
               if not output["pages"]:raise ValueError("No verified first rows in this generation")
               shower_rows = {**output, "pages": {SHOWER_SUBCATEGORY: shower} if shower else {}}
-              write_json(args.output, {"first-row.json":output,"shower-row-previews.json":shower_rows})
+              bundle={"first-row.json":output,"shower-row-previews.json":shower_rows}
+              for route, filename in ROW_FILES.items():
+                  pages={route:per_route[route]} if route in per_route else {}
+                  bundle[filename]={**output,"pages":pages}
+              write_json(args.output,bundle)
 
           if __name__ == "__main__":
               import hashlib
@@ -388,6 +513,17 @@ jobs:
           FILENAME = "first-row.json"
           SHOWER_FILE = "shower-row-previews.json"
           SHOWER_ROUTE = "/?gc=smesiteli-i-dush&gs=dushevye-sistemy"
+          ROW_FILES = {
+              "/?gc=mebel-dlya-vannoy": "rows/mebel-dlya-vannoy.json",
+              "/?gc=vanny&gs=iz-iskusstvennogo-kamnya": "rows/vanny-iz-iskusstvennogo-kamnya.json",
+              "/installyatsii": "rows/installyatsii.json",
+              "/installyatsii-s-unitazom": "rows/installyatsii-s-unitazom.json",
+              "/?gc=zerkala": "rows/zerkala.json",
+              "/?gc=zerkalnye-shkafy": "rows/zerkalnye-shkafy.json",
+              "/?gc=smesiteli-i-dush": "rows/smesiteli-i-dush.json",
+              "/?gc=kuhonnye-moyki&gsubs=moyki-dlya-kuhni": "rows/moyki-dlya-kuhni.json",
+              "/?gc=polotentsesushiteli": "rows/polotentsesushiteli.json",
+          }
           GENERATION_PATH = "catalog/ready536/generation.json"
 
 
@@ -407,7 +543,7 @@ jobs:
           def publish(candidate, source):
               git("check-ref-format", "--branch", source)
               bundle = json.loads(candidate.read_bytes())
-              if not isinstance(bundle,dict) or set(bundle) != {FILENAME,SHOWER_FILE}:
+              if not isinstance(bundle,dict) or set(bundle) != {FILENAME, SHOWER_FILE, *ROW_FILES.values()}:
                   raise ValueError("Unexpected first-row files")
               manifest = bundle[FILENAME]
               stamp = load_generation(manifest)
@@ -431,6 +567,21 @@ jobs:
                       raise ValueError(f"Incompatible source timestamp for {route}")
                   if snapshot["part"] != part or inventory["parts"][part] != snapshot["total"]:
                       raise ValueError(f"Incompatible source for {route}")
+
+              for route, filename in ROW_FILES.items():
+                  doc = bundle[filename]
+                  if doc.get("schema") != 1 or doc.get("generation") != stamp:
+                      raise ValueError(f"Wrong row generation for {route}")
+                  canonical = manifest["pages"].get(route)
+                  pages = doc.get("pages")
+                  if not isinstance(pages,dict) or set(pages) != ({route} if canonical else set()):
+                      raise ValueError(f"Wrong route in {filename}")
+                  if canonical:
+                      rich = pages[route]
+                      clean = {k:v for k,v in rich.items() if k not in {"cards","brands"}}
+                      clean["cards"] = [{k:v for k,v in card.items() if k != "preview"} for card in rich["cards"]]
+                      if clean != canonical or len(rich["cards"]) != 4:
+                          raise ValueError(f"Unverified product row in {filename}")
 
               bodies = {name:json.dumps(doc,ensure_ascii=False,separators=(",",":"),allow_nan=False).encode("utf8")
                         for name,doc in bundle.items()}
@@ -459,7 +610,7 @@ jobs:
                           git("update-index", "--add", "--cacheinfo", "100644", blob, name, env=index_env)
                       tree = git("write-tree", env=index_env).decode().strip()
                   if parent and tree == git("rev-parse",parent + "^{tree}").decode().strip():
-                      print("Both first-row files are already published.")
+                      print("All first-row files are already published.")
                       return
                   parents = ["-p", parent] if parent else []
                   commit = git("-c", "user.name=github-actions[bot]", "-c",
@@ -474,7 +625,7 @@ jobs:
           if __name__ == "__main__":
               import hashlib
               artifact = Path(os.environ["RUNNER_TEMP"]) / "verified-first-row" / "verified-rows.json"
-              if not artifact.is_file() or artifact.is_symlink() or not 0 < artifact.stat().st_size <= 131072:
+              if not artifact.is_file() or artifact.is_symlink() or not 0 < artifact.stat().st_size <= 900000:
                   raise ValueError("Unexpected first-row artifact")
               if hashlib.sha256(artifact.read_bytes()).hexdigest() != os.environ["EXPECTED_SHA256"]:
                   raise ValueError("Downloaded first row differs from the browser-verified build")
