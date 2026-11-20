@@ -8,7 +8,7 @@
     return [...params.keys()].every(key => key === "gc" || key === "gs" || /^utm_/.test(key) || key === "gclid" || key === "yclid");
   }
   if (!isFirstPage() || window.GIDCornerFirstPage || navigator.connection?.saveData) return;
-  const address = "https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/main/catalog/ready536/first-pages/vanny-uglovye.json";
+  const address = "https://raw.githubusercontent.com/Santehsalon-coder/gidvms-tilda-photos/refs/heads/main/catalog/ready536/first-pages/vanny-uglovye.json";
   const renderHash = "94fcb15d3d22d2d7079cfa906d0bbcc815c142f2cbc863ba4b55ab9a153873a2";
   const compressed = typeof DecompressionStream === "function";
   const snapshot = fetch(compressed ? address + ".gz" : address, {credentials: "omit", referrerPolicy: "no-referrer"})
