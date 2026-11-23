@@ -1,0 +1,157 @@
+name: Refresh storefront category photo hints
+
+on:
+  workflow_run:
+    workflows: ["Refresh ready category snapshots"]
+    types: [completed]
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/refresh-catalog-first-media.yml
+      - scripts/build_catalog_first_media.py
+
+permissions: {}
+concurrency:
+  group: publish-storefront-category-photo-hints
+  cancel-in-progress: false
+
+jobs:
+  render:
+    if: >-
+      github.ref_name == github.event.repository.default_branch &&
+      (github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_repository.full_name == github.repository &&
+       github.event.workflow_run.head_branch == github.event.repository.default_branch))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      source: ${{ steps.capture.outputs.source }}
+      digest: ${{ steps.capture.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          sparse-checkout: |
+            catalog/ready536
+            scripts
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prepare Chromium
+        run: |
+          python -m pip install 'playwright==1.62.0'
+          if command -v google-chrome >/dev/null; then
+            echo "STOREFRONT_BROWSER=$(command -v google-chrome)" >> "$GITHUB_ENV"
+          else
+            python -m playwright install chromium --only-shell
+          fi
+      - name: Compare desktop and phone photos against the current catalog
+        id: capture
+        run: |
+          python scripts/build_catalog_first_media.py --output "$RUNNER_TEMP/media/current.json"
+          echo "source=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "digest=$(sha256sum "$RUNNER_TEMP/media/current.json" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: catalog-first-media
+          path: ${{ runner.temp }}/media/current.json
+          if-no-files-found: error
+          retention-days: 3
+
+  publish:
+    needs: render
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.render.outputs.source }}
+          sparse-checkout: catalog/ready536
+      - uses: actions/download-artifact@v4
+        with:
+          name: catalog-first-media
+          path: ${{ runner.temp }}/media
+      - name: Publish the current and immutable generation URLs atomically
+        env:
+          SOURCE_BRANCH: ${{ github.event.repository.default_branch }}
+          EXPECTED_DIGEST: ${{ needs.render.outputs.digest }}
+        shell: python
+        run: |
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+          import tempfile
+          import time
+
+          def git(*args, data=None, env=None):
+              return subprocess.check_output(["git", *args], input=data, env=env).decode().strip()
+
+          raw = (Path(os.environ["RUNNER_TEMP"])/"media/current.json").read_bytes()
+          if len(raw) > 50_000 or hashlib.sha256(raw).hexdigest() != os.environ["EXPECTED_DIGEST"]:
+              raise ValueError("Unexpected media artifact")
+          doc = json.loads(raw)
+          stamp = doc["generation"]
+          if type(stamp) != int or not 0 <= time.time()*1000 - stamp < 86_400_000 or doc["schema"] != 1:
+              raise ValueError("Generation is stale or unknown")
+          pages = doc["pages"]
+          if not isinstance(pages,dict) or not any(pages.values()):
+              raise ValueError("Missing verified photo rows")
+          route = re.compile(r"/\?gc=[a-z0-9-]+&gs=[a-z0-9-]+")
+          photo = re.compile(r"https://(?:static|thb|optim)\.tildacdn\.(?:com|net|pub|info)/[^\s]+")
+          for key, cards in pages.items():
+              if not route.fullmatch(key) or not isinstance(cards,list) or len(cards)>4:
+                  raise ValueError("Unexpected subcategory")
+              for uid,url in cards:
+                  if not re.fullmatch(r"[0-9]{12}",uid) or not photo.fullmatch(url):
+                      raise ValueError("Unexpected photo hint")
+
+          source = os.environ["SOURCE_BRANCH"]
+          git("check-ref-format", "--branch", source)
+          branch = "refs/heads/catalog-first-media"
+          genpath = "catalog/ready536/generation.json"
+          blob = git("hash-object", "-w", "--stdin", data=raw)
+          for _ in range(3):
+              git("fetch", "--no-tags", "--depth=1", "origin", "refs/heads/"+source)
+              if json.loads(git("show", "FETCH_HEAD:"+genpath))["at"] != stamp:
+                  print("A newer inventory is available. Keeping the previous media branch.")
+                  break
+              parent = None
+              keep = {}
+              if git("ls-remote", "--heads", "origin", branch):
+                  git("fetch", "--no-tags", "--depth=1", "origin", branch)
+                  parent = git("rev-parse", "FETCH_HEAD")
+                  files = git("ls-tree", "--name-only", parent).splitlines()
+                  if f"{stamp}.json" in files:
+                      print("This generation already has immutable hints.")
+                      break
+                  history = sorted((f for f in files if re.fullmatch(r"[0-9]{13}\.json",f)),reverse=True)
+                  if history and int(history[0][:-5]) >= stamp:
+                      print("A newer generation has already been published.")
+                      break
+                  for name in history[:2]:
+                      keep[name] = git("rev-parse",parent+":"+name)
+              keep.update({"current.json":blob,f"{stamp}.json":blob})
+              with tempfile.TemporaryDirectory() as tmp:
+                  env = {**os.environ, "GIT_INDEX_FILE":str(Path(tmp)/"index")}
+                  git("read-tree","--empty",env=env)
+                  for name, obj in keep.items():
+                      git("update-index","--add","--cacheinfo","100644",obj,name,env=env)
+                  tree=git("write-tree",env=env)
+              parents=["-p",parent] if parent else []
+              commit=git("-c","user.name=github-actions[bot]","-c",
+                         "user.email=41898282+github-actions[bot]@users.noreply.github.com",
+                         "commit-tree",tree,*parents,"-m",f"Catalog photo hints for {stamp}")
+              if subprocess.run(["git","push","origin",commit+":"+branch]).returncode==0:
+                  print("Published",len(pages),"photo rows.")
+                  break
+          else:
+              raise RuntimeError("Could not fast-forward the photo branch")
